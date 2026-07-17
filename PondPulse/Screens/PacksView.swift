@@ -80,6 +80,7 @@ struct PacksView: View {
                 }
             }
         }
+        .pondContentWidth()
     }
 
     private func levelGrid(_ pack: Pack) -> some View {

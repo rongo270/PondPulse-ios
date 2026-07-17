@@ -140,6 +140,7 @@ private struct RushSetup: View {
                 .padding(.horizontal, 24)
             }
         }
+        .pondContentWidth()
     }
 }
 
@@ -226,6 +227,7 @@ private struct RushPlay: View {
                 .padding(.bottom, 14)
             }
             .padding(.horizontal, 16)
+            .pondContentWidth(560)
 
             if state.won {
                 WinCelebration(skinId: vm.skinId)

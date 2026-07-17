@@ -130,7 +130,7 @@ struct OverlayCard<Content: View>: View {
                 content
             }
             .padding(28)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: 420)
             .background(palette.surfaceHigh, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
             .shadow(color: .black.opacity(palette.isDark ? 0.45 : 0.18), radius: 24, y: 10)
             .padding(32)
@@ -213,5 +213,15 @@ enum Haptics {
     static func tick(enabled: Bool) {
         guard enabled else { return }
         soft.impactOccurred(intensity: 0.7)
+    }
+}
+
+// MARK: - Layout helpers
+
+extension View {
+    /// Caps a screen's content at phone-ish width and centers it, so iPads
+    /// don't stretch the phone layout edge to edge.
+    func pondContentWidth(_ maxWidth: CGFloat = 520) -> some View {
+        frame(maxWidth: maxWidth)
     }
 }

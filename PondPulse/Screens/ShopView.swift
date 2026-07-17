@@ -134,6 +134,7 @@ struct ShopView: View {
                     .padding(.bottom, 32)
                 }
             }
+            .pondContentWidth()
 
             // Blocks double-taps while the App Store payment sheet is up.
             if vm.purchasing {

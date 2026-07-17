@@ -17,6 +17,11 @@ struct SettingsView: View {
     @State private var pickLanguage = false
 
     var body: some View {
+        content
+            .pondContentWidth()
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             ScreenHeader(title: strings["settings_title"], onBack: { vm.back() })
 
