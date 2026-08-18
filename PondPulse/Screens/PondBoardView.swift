@@ -18,6 +18,13 @@ private final class BoardMotion {
     var display: [Int: CGPoint] = [:]     // cell coordinates
     var velocity: [Int: CGVector] = [:]
     var ripples: [(center: Pos, start: Date)] = []
+    /// The little cheer when a duckling reaches its pad, in cell units.
+    var settles: [(at: CGPoint, start: Date)] = []
+    /// Which ducklings were already home last frame, so only the ones that
+    /// arrive on this splash get a cheer - and replays start the count over.
+    /// Seeded with any duckling the level starts on its pad: it never arrives,
+    /// so it must not set off a burst the moment the board appears.
+    var cheered: Set<Int> = []
     var lastTick: Date?
     /// Captured by every draw so taps can map view points to cells.
     var lastSize: CGSize = .zero
@@ -26,7 +33,7 @@ private final class BoardMotion {
     private let stiffness: CGFloat = 200
     private var damping: CGFloat { 2 * sqrt(stiffness) * 0.75 }
 
-    func step(to now: Date, floaters: [Floater], levelId: String) {
+    func step(to now: Date, floaters: [Floater], levelId: String, spec: LevelSpec) {
         if self.levelId != levelId {
             self.levelId = levelId
             display = Dictionary(uniqueKeysWithValues: floaters.map {
@@ -34,6 +41,8 @@ private final class BoardMotion {
             })
             velocity = [:]
             ripples = []
+            settles = []
+            cheered = Set(floaters.filter { spec.isSettled($0) }.map(\.id))
             lastTick = now
             return
         }
@@ -60,6 +69,18 @@ private final class BoardMotion {
             velocity[floater.id] = vel
         }
         ripples.removeAll { now.timeIntervalSince($0.start) > 0.75 }
+
+        // Cheer the new arrivals; an undo puts a duckling back adrift, so the
+        // set is re-derived rather than only added to.
+        let home = Set(floaters.filter { spec.isSettled($0) }.map(\.id))
+        cheered.formIntersection(home)
+        for floater in floaters where spec.isSettled(floater) && cheered.insert(floater.id).inserted {
+            settles.append((
+                at: CGPoint(x: CGFloat(floater.pos.x) + 0.5, y: CGFloat(floater.pos.y) + 0.5),
+                start: now
+            ))
+        }
+        settles.removeAll { now.timeIntervalSince($0.start) > 0.9 }
     }
 }
 
@@ -77,7 +98,7 @@ struct PondBoardView: View {
         let spec = state.spec
         TimelineView(.animation) { timeline in
             Canvas { ctx, size in
-                motion.step(to: timeline.date, floaters: state.floaters, levelId: spec.id)
+                motion.step(to: timeline.date, floaters: state.floaters, levelId: spec.id, spec: spec)
                 draw(&ctx, size: size, now: timeline.date)
             }
         }
@@ -199,21 +220,42 @@ struct PondBoardView: View {
                 width: cell,
                 height: cell
             )
-            let bob = sin(bobPhase + CGFloat(floater.id) * 1.7) * cell * 0.03
+            let settled = spec.isSettled(floater)
+            // Settled ducklings sit still; everything else bobs on the water.
+            let bob = settled ? 0 : sin(bobPhase + CGFloat(floater.id) * 1.7) * cell * 0.03
             let bobbed = rect.offsetBy(dx: 0, dy: bob)
             switch floater.kind {
             case .duck:
-                if spec.padAccepts(floater.pos, floater.color) {
-                    let r = cell * 0.5
+                if settled {
+                    // A settled duckling is home for good; the halo says so.
+                    let glow = cell * 0.48
                     ctx.fill(
-                        Path(ellipseIn: CGRect(x: rect.midX - r, y: rect.midY - r, width: r * 2, height: r * 2)),
-                        with: .color(palette.accent.opacity(0.28))
+                        Path(ellipseIn: CGRect(x: rect.midX - glow, y: rect.midY - glow, width: glow * 2, height: glow * 2)),
+                        with: .color(palette.star.opacity(0.18))
+                    )
+                    let ring = cell * 0.42
+                    ctx.stroke(
+                        Path(ellipseIn: CGRect(x: rect.midX - ring, y: rect.midY - ring, width: ring * 2, height: ring * 2)),
+                        with: .color(palette.star.opacity(0.55)),
+                        lineWidth: cell * 0.035
                     )
                 }
                 drawFloaterSkin(&ctx, skinId: skinId, rect: bobbed, palette: palette, color: floater.color)
             case .turtle:
                 drawTurtle(&ctx, bobbed, palette)
             }
+        }
+
+        // The cheer when a duckling settles.
+        for fx in motion.settles {
+            let progress = min(max(now.timeIntervalSince(fx.start) / 0.9, 0), 1)
+            drawSettleBurst(
+                &ctx,
+                center: CGPoint(x: originX + fx.at.x * cell, y: originY + fx.at.y * cell),
+                progress: CGFloat(progress),
+                cell: cell,
+                palette: palette
+            )
         }
 
         // Hint: a pulsing ring on the suggested splash cell.
@@ -232,5 +274,39 @@ struct PondBoardView: View {
                 with: .color(.white.opacity(0.35))
             )
         }
+    }
+}
+
+
+/// A short ring-and-sparkle cheer where a duckling just settled.
+nonisolated private func drawSettleBurst(
+    _ ctx: inout GraphicsContext,
+    center: CGPoint,
+    progress: CGFloat,
+    cell: CGFloat,
+    palette: PondPalette
+) {
+    let fade = min(max(1 - progress, 0), 1)
+    let radius = cell * (0.3 + progress * 0.45)
+    ctx.stroke(
+        Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)),
+        with: .color(palette.star.opacity(0.55 * fade)),
+        lineWidth: cell * 0.06 * fade
+    )
+    for i in 0..<6 {
+        let angle = (Double(i) * 60 + Double(progress) * 40) * .pi / 180
+        let reach = cell * (0.30 + progress * 0.35)
+        let at = CGPoint(x: center.x + cos(angle) * reach, y: center.y + sin(angle) * reach)
+        let arm = cell * 0.07 * fade
+        var spark = Path()
+        spark.move(to: CGPoint(x: at.x - arm, y: at.y))
+        spark.addLine(to: CGPoint(x: at.x + arm, y: at.y))
+        spark.move(to: CGPoint(x: at.x, y: at.y - arm))
+        spark.addLine(to: CGPoint(x: at.x, y: at.y + arm))
+        ctx.stroke(
+            spark,
+            with: .color(palette.star.opacity(fade)),
+            style: StrokeStyle(lineWidth: cell * 0.025, lineCap: .round)
+        )
     }
 }

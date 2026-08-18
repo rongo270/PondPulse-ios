@@ -16,6 +16,9 @@ enum Unlock {
     /// Granted forever once the given global level number is solved.
     case levelReward(Int)
 
+    /// Granted forever once the given number of bonus ponds have been cleared.
+    case bonusReward(Int)
+
     /// Included with the premium upgrade; hidden from the shop until owned.
     case premium
 
@@ -29,6 +32,11 @@ enum Unlock {
 
     var rewardLevel: Int? {
         if case .levelReward(let level) = self { return level }
+        return nil
+    }
+
+    var rewardBonusPonds: Int? {
+        if case .bonusReward(let count) = self { return count }
         return nil
     }
 
@@ -79,6 +87,7 @@ enum Catalog {
         ThemeItem(id: "dusk", nameKey: "theme_dusk", palette: .duskPond, unlock: .free),
         ThemeItem(id: "sunny", nameKey: "theme_sunny", palette: .sunnyMorning, unlock: .free),
         ThemeItem(id: "jungle", nameKey: "theme_jungle", palette: .jungleMist, unlock: .levelReward(75)),
+        ThemeItem(id: "goldenpond", nameKey: "theme_goldenpond", palette: .goldenPond, unlock: .bonusReward(10)),
         ThemeItem(id: "sakura", nameKey: "theme_sakura", palette: .sakuraPond, unlock: .paid(themePrice)),
         ThemeItem(id: "neon", nameKey: "theme_neon", palette: .midnightNeon, unlock: .paid(themePrice)),
         ThemeItem(id: "autumn", nameKey: "theme_autumn", palette: .autumnGold, unlock: .paid(themePrice)),
@@ -95,6 +104,7 @@ enum Catalog {
         SkinItem(id: "swan", nameKey: "skin_swan", unlock: .levelReward(100)),
         SkinItem(id: "robo", nameKey: "skin_robo", unlock: .levelReward(200)),
         SkinItem(id: "golden", nameKey: "skin_golden", unlock: .levelReward(300)),
+        SkinItem(id: "gosling", nameKey: "skin_gosling", unlock: .bonusReward(20)),
         SkinItem(id: "koi", nameKey: "skin_koi", unlock: .paid(skinPrice)),
         SkinItem(id: "penguin", nameKey: "skin_penguin", unlock: .paid(skinPrice)),
         SkinItem(id: "flamingo", nameKey: "skin_flamingo", unlock: .paid(skinPrice)),
@@ -112,6 +122,7 @@ enum Catalog {
         PadItem(id: "lotus", nameKey: "pad_lotus", unlock: .levelReward(30)),
         PadItem(id: "starlight", nameKey: "pad_starlight", unlock: .levelReward(60)),
         PadItem(id: "rainbow", nameKey: "pad_rainbow", unlock: .levelReward(125)),
+        PadItem(id: "goldenlily", nameKey: "pad_goldenlily", unlock: .bonusReward(3)),
         PadItem(id: "ice", nameKey: "pad_ice", unlock: .paid(padPrice)),
         PadItem(id: "shell", nameKey: "pad_shell", unlock: .paid(padPrice)),
         PadItem(id: "sunflower", nameKey: "pad_sunflower", unlock: .paid(padPrice)),

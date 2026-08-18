@@ -111,6 +111,7 @@ nonisolated func drawFloaterSkin(_ ctx: inout GraphicsContext, skinId: String, r
     case "dragon": drawDragon(&ctx, rect, palette, color)
     case "narwhal": drawNarwhal(&ctx, rect, palette, color)
     case "beaver": drawBeaver(&ctx, rect, palette, color)
+    case "gosling": drawGosling(&ctx, rect, palette, color)
     default: drawDuck(&ctx, rect, palette, tint: palette.duckTint(color))
     }
 }
@@ -119,6 +120,7 @@ nonisolated func drawFloaterSkin(_ ctx: inout GraphicsContext, skinId: String, r
 nonisolated func drawPadStyle(_ ctx: inout GraphicsContext, padId: String, rect: CGRect, palette: PondPalette, ring: Color?) {
     switch padId {
     case "lotus": drawLotusPad(&ctx, rect, palette)
+    case "goldenlily": drawGoldenLilyPad(&ctx, rect)
     case "ice": drawIcePad(&ctx, rect)
     case "starlight": drawStarlightPad(&ctx, rect)
     case "shell": drawShellPad(&ctx, rect)
@@ -1069,4 +1071,88 @@ nonisolated func drawRock(_ ctx: inout GraphicsContext, rect: CGRect, palette: P
         circle(CGPoint(x: rect.midX - cell * 0.15, y: rect.midY - cell * 0.18), cell * 0.09),
         with: .color(.white.opacity(0.18))
     )
+}
+
+
+/// A fluffy hatchling: rounder and smaller than the duckling, with down tufts.
+nonisolated private func drawGosling(
+    _ ctx: inout GraphicsContext, _ rect: CGRect, _ palette: PondPalette, _ color: DuckColor?
+) {
+    let cell = rect.width
+    let center = CGPoint(x: rect.midX, y: rect.midY)
+    let down = bodyTint(palette, color, Color(hex: 0xFFE08A))
+    let dark = down.shaded(0.86)
+    // Body: one soft ball with a smaller head, so it reads as a baby.
+    ctx.fill(circle(CGPoint(x: center.x - cell * 0.05, y: center.y + cell * 0.07), cell * 0.25), with: .color(dark))
+    let belly = CGPoint(x: center.x - cell * 0.05, y: center.y + cell * 0.04)
+    ctx.fill(circle(belly, cell * 0.25), with: .color(down))
+    // Down tufts around the back.
+    for i in 0..<5 {
+        let angle = (110 + Double(i) * 35) * .pi / 180
+        let at = CGPoint(x: belly.x + cos(angle) * cell * 0.25, y: belly.y + sin(angle) * cell * 0.25)
+        ctx.fill(circle(at, cell * 0.045), with: .color(down))
+    }
+    let head = CGPoint(x: center.x + cell * 0.13, y: center.y - cell * 0.16)
+    ctx.fill(circle(head, cell * 0.155), with: .color(down))
+    // Two tiny head feathers.
+    for dx in [-0.03, 0.03] as [CGFloat] {
+        ctx.stroke(
+            line(
+                CGPoint(x: head.x + cell * dx, y: head.y - cell * 0.13),
+                CGPoint(x: head.x + cell * dx * 2.5, y: head.y - cell * 0.24)
+            ),
+            with: .color(dark),
+            style: StrokeStyle(lineWidth: cell * 0.022, lineCap: .round)
+        )
+    }
+    ctx.fill(
+        polygon([
+            CGPoint(x: head.x + cell * 0.12, y: head.y - cell * 0.04),
+            CGPoint(x: head.x + cell * 0.26, y: head.y + cell * 0.01),
+            CGPoint(x: head.x + cell * 0.12, y: head.y + cell * 0.07),
+        ]),
+        with: .color(palette.beak)
+    )
+    ctx.fill(circle(CGPoint(x: head.x + cell * 0.05, y: head.y - cell * 0.035), cell * 0.032), with: .color(ink))
+}
+
+/// The golden lily: the plain pad's silhouette in gold, with a prize twinkle.
+nonisolated private func drawGoldenLilyPad(_ ctx: inout GraphicsContext, _ rect: CGRect) {
+    let cell = rect.width
+    let center = CGPoint(x: rect.midX, y: rect.midY)
+    let radius = cell * 0.38
+    let gold = Color(hex: 0xFFD24A)
+    let deepGold = Color(hex: 0xC7920F)
+
+    func leaf(_ at: CGPoint) -> Path {
+        let disc = circle(at, radius)
+        let notch = polygon([
+            at,
+            CGPoint(x: at.x + radius * 1.15, y: at.y - radius * 0.75),
+            CGPoint(x: at.x + radius * 0.55, y: at.y - radius * 1.15),
+        ])
+        return disc.subtracting(notch)
+    }
+    ctx.fill(leaf(CGPoint(x: center.x, y: center.y + cell * 0.03)), with: .color(deepGold))
+    ctx.fill(leaf(center), with: .color(gold))
+    // Veins radiating from the notch.
+    for i in 0..<5 {
+        let angle = (140 + Double(i) * 42) * .pi / 180
+        ctx.stroke(
+            line(center, CGPoint(x: center.x + cos(angle) * radius * 0.9, y: center.y + sin(angle) * radius * 0.9)),
+            with: .color(deepGold.opacity(0.55)),
+            style: StrokeStyle(lineWidth: cell * 0.025, lineCap: .round)
+        )
+    }
+    // A four-point twinkle so the pad reads as a prize.
+    let twinkle = CGPoint(x: center.x - radius * 0.35, y: center.y - radius * 0.3)
+    let arm = cell * 0.12
+    for rotation in [0.0, 90.0] as [CGFloat] {
+        let rc = rotated(ctx, degrees: rotation, pivot: twinkle)
+        rc.stroke(
+            line(CGPoint(x: twinkle.x - arm, y: twinkle.y), CGPoint(x: twinkle.x + arm, y: twinkle.y)),
+            with: .color(Color(hex: 0xFFF7D6)),
+            style: StrokeStyle(lineWidth: cell * 0.03, lineCap: .round)
+        )
+    }
 }

@@ -275,7 +275,7 @@ private struct PremiumCard: View {
                         .font(.game(12))
                         .foregroundStyle(palette.textSecondary.opacity(0.8))
                         .padding(.top, 2)
-                    PrimaryButton(strings["shop_premium_cta", price], action: onBuy)
+                    PrimaryButton(strings["shop_premium_cta"], action: onBuy)
                         .padding(.top, 6)
                 }
             }
@@ -313,7 +313,7 @@ private struct HintPackCard: View {
                         .foregroundStyle(palette.textSecondary)
                 }
                 Spacer()
-                Text(price)
+                Text(strings["shop_free_tag"])
                     .font(.game(15, .bold))
                     .foregroundStyle(palette.accent)
             }
@@ -389,6 +389,10 @@ private struct ThemeRow: View {
                     Text(strings["shop_reward_level", level])
                         .font(.game(13, .semibold))
                         .foregroundStyle(palette.textSecondary)
+                } else if let count = theme.unlock.rewardBonusPonds {
+                    Text(strings["bonus_locked_shop", count])
+                        .font(.game(13, .semibold))
+                        .foregroundStyle(palette.textSecondary)
                 } else if let price {
                     Text(price)
                         .font(.game(13, .bold))
@@ -431,7 +435,7 @@ struct ShopGridCard<Preview: View>: View {
             VStack(spacing: 6) {
                 preview
                     .overlay {
-                        if !usable, unlock.rewardLevel != nil {
+                        if !usable, unlock.rewardLevel != nil || unlock.rewardBonusPonds != nil {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(palette.background.opacity(0.55))
                             Image(systemName: "lock.fill")
@@ -462,6 +466,7 @@ struct ShopGridCard<Preview: View>: View {
         if selected { return strings["shop_selected"] }
         if usable { return strings["shop_select"] }
         if let level = unlock.rewardLevel { return strings["shop_reward_level", level] }
+        if let count = unlock.rewardBonusPonds { return strings["bonus_locked_shop", count] }
         return displayPrice ?? unlock.price ?? ""
     }
 
@@ -513,9 +518,14 @@ private struct ThemePreviewDialog: View {
                     } else if usable {
                         PrimaryButton(strings["shop_preview_use"], action: onApply)
                     } else if let price {
-                        PrimaryButton(strings["shop_buy_confirm", price]) { onBuy(price) }
+                        PrimaryButton(strings["shop_buy_confirm"]) { onBuy(price) }
                     } else if let level = theme.unlock.rewardLevel {
                         Text(strings["shop_reward_unlock_at", level, highestSolved])
+                            .font(.game(14))
+                            .foregroundStyle(palette.textSecondary)
+                            .multilineTextAlignment(.center)
+                    } else if let count = theme.unlock.rewardBonusPonds {
+                        Text(strings["bonus_locked_shop", count])
                             .font(.game(14))
                             .foregroundStyle(palette.textSecondary)
                             .multilineTextAlignment(.center)
@@ -684,7 +694,7 @@ private struct PremiumDetailsSheet: View {
                     if isPremium {
                         GhostButton(strings["close"]) { dismiss() }
                     } else {
-                        PrimaryButton(strings["shop_premium_cta", price], action: onBuy)
+                        PrimaryButton(strings["shop_premium_cta"], action: onBuy)
                     }
                 }
                 .padding(.top, 16)

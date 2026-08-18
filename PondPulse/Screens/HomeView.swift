@@ -112,7 +112,7 @@ struct HomeView: View {
 
     var body: some View {
         let earned = vm.totalStars
-        let total = Levels.all.count * 3
+        let total = (Levels.all.count + Levels.bonusPonds.count) * 3
         let continueNumber = vm.globalLevelNumber(vm.continueLevelId())
 
         ZStack {
@@ -202,7 +202,7 @@ private struct RulesOverlay: View {
         OverlayCard {
             SectionTitle(strings["rules_title"])
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(["rule_1", "rule_2", "rule_3", "rule_4", "rule_5"].enumerated()), id: \.offset) { index, key in
+                ForEach(Array(["rule_1", "rule_2", "rule_3", "rule_4", "rule_5", "rule_6"].enumerated()), id: \.offset) { index, key in
                     HStack(alignment: .top, spacing: 8) {
                         Text("\(index + 1).")
                             .font(.game(15, .bold))

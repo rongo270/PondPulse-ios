@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Convert PondPulse's Kotlin level data (Levels.kt / MoreLevels.kt / NewLevels.kt)
-into generated Swift (LevelMaps1/2/3.swift). Mirrors ids, slack, rows and tips 1:1."""
+"""Convert PondPulse's Kotlin level data (Levels.kt / MoreLevels.kt / NewLevels.kt,
+plus BonusLevels.kt) into generated Swift (LevelMaps1/2/3.swift, BonusMaps.swift).
+Mirrors ids, slack, rows and tips 1:1."""
 import re
 import sys
 
 SRC = "/Users/rongo/AndroidStudioProjects/PondPulse/app/src/main/java/com/rongo/pondpulse/levels"
-DST = "/Users/rongo/Desktop/ios/PondPulse/PondPulse"
+DST = "/Users/rongo/Desktop/ios/PondPulse/PondPulse/Levels"
 
 PACK_RE = re.compile(r"private val pack(\d+) = listOf\(")
 DRAFT_RE = re.compile(
@@ -85,3 +86,105 @@ if missing:
     sys.exit(1)
 total = sum(len(ds) for packs in (levels_packs, more_packs, new_packs) for ds in packs.values())
 print(f"total levels: {total}")
+
+
+# ---------------------------------------------------------------- bonus ponds
+
+BONUS_DRAFT_RE = re.compile(r'draft\(\s*"(b-\d+)",\s*((?:"[^"]*",?\s*)+)\)', re.S)
+
+
+def emit_bonus():
+    """BonusLevels.kt -> BonusMaps.swift. One golden pond per stage, all with the
+    same generous slack, so only ids, pars and rows travel."""
+    text = open(f"{SRC}/BonusLevels.kt").read()
+    slack = int(re.search(r"const val SLACK = (\d+)", text).group(1))
+    pars_block = re.search(r"private val pars = mapOf\((.*?)\n    \)", text, re.S).group(1)
+    pars = {m.group(1): int(m.group(2))
+            for m in re.finditer(r'"(b-\d+)"\s+to\s+(\d+)', pars_block)}
+
+    drafts = []
+    for m in BONUS_DRAFT_RE.finditer(text):
+        rows = re.findall(r'"([^"]*)"', m.group(2))
+        drafts.append((m.group(1), rows))
+
+    missing = [d for d, _ in drafts if d not in pars]
+    if missing:
+        print("MISSING BONUS PARS:", missing)
+        sys.exit(1)
+
+    lines = [
+        "//",
+        "//  BonusMaps.swift",
+        "//  PondPulse",
+        "//",
+        "//  GENERATED from the Android BonusLevels.kt - do not edit by hand.",
+        "//  Regenerate with tools/convert_levels.py.",
+        "//",
+        "//  The 30 bonus ponds, one closing every stage. Wide open water, a whole",
+        "//  brood to bring home, and a budget nobody runs out of.",
+        "//",
+        "",
+        "extension LevelMaps {",
+        f"    /// Bonus ponds are meant to be splashed around in, so the budget is huge.",
+        f"    static let bonusSlack = {slack}",
+        "",
+        "    static let bonusPars: [String: Int] = [",
+    ]
+    for i in range(0, len(drafts), 10):
+        chunk = drafts[i:i + 10]
+        lines.append("        " + " ".join(f'"{d}": {pars[d]},' for d, _ in chunk))
+    lines.append("    ]")
+    lines.append("")
+    lines.append("    /// In play order: one pond per stage, gentlest first.")
+    lines.append("    static let bonus: [BonusDraft] = [")
+    for lid, rows in drafts:
+        row_lits = ", ".join(f'"{swift_escape(r)}"' for r in rows)
+        lines.append(f'        BonusDraft("{lid}", [{row_lits}]),')
+    lines.append("    ]")
+    lines.append("}")
+    lines.append("")
+    open(f"{DST}/BonusMaps.swift", "w").write("\n".join(lines))
+    print(f"{DST}/BonusMaps.swift: {len(drafts)} bonus ponds, {len(pars)} pars, slack {slack}")
+
+
+emit_bonus()
+
+
+# ---------------------------------------------------------------- toughness
+
+def emit_toughness():
+    """Levels.kt's `toughness` map -> Toughness.swift.
+
+    Measured bluff@2 per pond: the chance a player who taps sensibly but never
+    plans ahead wins anyway. Lower is harder. This, not par, is what orders the
+    ponds inside a stage and what grades a stage's difficulty chip."""
+    text = open(f"{SRC}/Levels.kt").read()
+    block = re.search(r"private val toughness = mapOf<String, Double>\((.*?)\n    \)", text, re.S).group(1)
+    entries = re.findall(r'"([\d-]+)"\s+to\s+([\d.]+)', block)
+
+    lines = [
+        "//",
+        "//  Toughness.swift",
+        "//  PondPulse",
+        "//",
+        "//  GENERATED from the Android Levels.kt `toughness` map - do not edit by hand.",
+        "//  Regenerate with tools/convert_levels.py.",
+        "//",
+        "",
+        "extension LevelMaps {",
+        "    /// Measured `bluff@2` for every pond: the chance a player who taps sensibly",
+        "    /// but never plans ahead wins anyway. **Lower is harder**, and this - not par",
+        "    /// - is what decides a pond's place in the game.",
+        "    static let toughness: [String: Double] = [",
+    ]
+    for i in range(0, len(entries), 5):
+        chunk = entries[i:i + 5]
+        lines.append("        " + " ".join(f'"{k}": {v},' for k, v in chunk))
+    lines.append("    ]")
+    lines.append("}")
+    lines.append("")
+    open(f"{DST}/Toughness.swift", "w").write("\n".join(lines))
+    print(f"{DST}/Toughness.swift: {len(entries)} measurements")
+
+
+emit_toughness()

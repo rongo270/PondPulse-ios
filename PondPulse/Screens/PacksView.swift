@@ -2,181 +2,307 @@
 //  PacksView.swift
 //  PondPulse
 //
-//  The Pond: all 30 stages as collapsible headers with lily-leaf level
-//  buttons. Only the stage the player is working through starts open, so even
-//  level 260 is a tap away. Port of the Android ui/PacksScreen.kt.
+//  The pond, one plain card per pack, two to a row. Nine cards laid out in a
+//  grid is barely a scroll - the ponds themselves live one tap deeper, on
+//  PackLevelsView - and a card carries only what a player weighs before diving
+//  in: which levels it holds, how hard it bites, and how far through it they
+//  already are. Port of the Android ui/PacksScreen.kt.
 //
 
 import SwiftUI
+
+private let packColumns = 2
 
 struct PacksView: View {
     @ObservedObject var vm: AppViewModel
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
 
-    @State private var expandedIds: Set<String>
-    private let currentPackId: String
-
-    init(vm: AppViewModel) {
-        self.vm = vm
-        let packId = Levels.packOf(vm.continueLevelId()).id
-        currentPackId = packId
-        _expandedIds = State(initialValue: [packId])
-    }
+    /// Whether the pack the player is on has scrolled out of sight, so the
+    /// "back to your pond" pill can offer to take them there.
+    @State private var currentOffScreen = false
 
     var body: some View {
-        let firstPremiumIndex = Levels.packs.firstIndex { vm.isPremiumLevel($0.levels[0].id) }
+        let currentPackId = vm.currentPack().id
+        let firstPremiumIndex = Levels.packs.firstIndex { vm.isPackPremiumLocked($0) }
 
-        VStack(spacing: 0) {
-            ScreenHeader(title: strings["packs_title"], onBack: { vm.back() }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(palette.star)
-                    Text("\(vm.totalStars)")
-                        .font(.game(16, .bold))
-                        .foregroundStyle(palette.accent)
-                        .contentTransition(.numericText())
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                ScreenHeader(title: strings["packs_title"], onBack: { vm.back() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(palette.star)
+                        Text("\(vm.totalStars)")
+                            .font(.game(16, .bold))
+                            .foregroundStyle(palette.accent)
+                            .contentTransition(.numericText())
+                    }
                 }
-            }
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(Array(Levels.packs.enumerated()), id: \.element.id) { packIndex, pack in
-                            let packIsPremium = vm.isPremiumLevel(pack.levels[0].id)
-                            if !vm.isPremium, packIsPremium, packIndex == firstPremiumIndex {
-                                PremiumUpsellBanner(
-                                    levelCount: vm.premiumLevelCount(),
-                                    price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice)
+                PondProgressHeader(solved: vm.solvedLevels(), total: Levels.all.count)
+
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVGrid(
+                            columns: Array(
+                                repeating: GridItem(.flexible(), spacing: 10),
+                                count: packColumns
+                            ),
+                            spacing: 10
+                        ) {
+                            ForEach(Array(Levels.packs.enumerated()), id: \.element.id) { index, pack in
+                                let premiumLocked = vm.isPackPremiumLocked(pack)
+                                if premiumLocked, index == firstPremiumIndex {
+                                    PremiumUpsellBanner(
+                                        levelCount: vm.premiumLevelCount(),
+                                        price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice)
+                                    ) {
+                                        vm.navigate(.shop)
+                                    }
+                                    .gridCellColumns(packColumns)
+                                }
+                                let solved = vm.packSolved(pack)
+                                PackCard(
+                                    pack: pack,
+                                    solved: solved,
+                                    stars: vm.packStars(pack),
+                                    state: {
+                                        if premiumLocked { return .premium }
+                                        if !vm.isPackUnlocked(pack) { return .locked }
+                                        if pack.id == currentPackId { return .current }
+                                        if solved == pack.levels.count { return .cleared }
+                                        return .open
+                                    }()
                                 ) {
-                                    vm.navigate(.shop)
+                                    if premiumLocked {
+                                        vm.navigate(.shop)
+                                    } else {
+                                        vm.navigate(.packLevels(packId: pack.id))
+                                    }
                                 }
-                            }
-                            let expanded = expandedIds.contains(pack.id)
-                            PackHeader(
-                                pack: pack,
-                                earned: pack.levels.reduce(0) { $0 + (vm.stars[$1.id] ?? 0) },
-                                premiumBadge: packIsPremium,
-                                expanded: expanded
-                            ) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    if expanded { expandedIds.remove(pack.id) } else { expandedIds.insert(pack.id) }
-                                }
-                            }
-                            .id(pack.id)
-                            if expanded {
-                                levelGrid(pack)
+                                // Identity is the pack, not a row index: the grid
+                                // must never reuse one pack's card for another's.
+                                .id(pack.id)
+                                .onAppear { if pack.id == currentPackId { currentOffScreen = false } }
+                                .onDisappear { if pack.id == currentPackId { currentOffScreen = true } }
                             }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 40)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
-                }
-                .onAppear {
-                    if currentPackId != Levels.packs[0].id {
-                        proxy.scrollTo(currentPackId, anchor: .top)
+                    .onAppear {
+                        if currentPackId != Levels.packs[0].id {
+                            proxy.scrollTo(currentPackId, anchor: .center)
+                        }
                     }
+                    .overlay(alignment: .bottom) {
+                        // The whole point of landing on your own pack: if browsing
+                        // carries you away from it, one tap brings you back instead
+                        // of a screenful of scrolling.
+                        if currentOffScreen {
+                            Button {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                    proxy.scrollTo(currentPackId, anchor: .center)
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "scope")
+                                        .font(.system(size: 14, weight: .bold))
+                                    Text(strings["packs_jump_back"])
+                                        .font(.game(14, .bold))
+                                }
+                                .foregroundStyle(PondPalette.onAccent)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(palette.accent, in: Capsule())
+                            }
+                            .buttonStyle(SquishyButtonStyle())
+                            .padding(.bottom, 18)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: currentOffScreen)
                 }
             }
         }
         .pondContentWidth()
     }
+}
 
-    private func levelGrid(_ pack: Pack) -> some View {
-        let rows = stride(from: 0, to: pack.levels.count, by: 4).map {
-            Array(pack.levels[$0..<min($0 + 4, pack.levels.count)])
-        }
-        return ForEach(Array(rows.enumerated()), id: \.offset) { _, rowLevels in
-            HStack(spacing: 10) {
-                ForEach(rowLevels, id: \.id) { level in
-                    let premiumLocked = vm.isPremiumLevel(level.id) && !vm.isPremium
-                    LevelLeaf(
-                        stars: vm.stars[level.id] ?? 0,
-                        unlocked: vm.isUnlocked(level.id),
-                        premiumLocked: premiumLocked,
-                        number: vm.globalLevelNumber(level.id)
-                    ) {
-                        if premiumLocked {
-                            vm.navigate(.shop)
-                        } else {
-                            vm.navigate(.game(levelId: level.id))
-                        }
-                    }
-                }
-                ForEach(0..<(4 - rowLevels.count), id: \.self) { _ in
-                    Color.clear.frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                }
+/// Where the player stands in the whole pond, above the grid. It doesn't name
+/// which pack they are on: the grid shows every pack at once with their own card
+/// ringed, so a line repeating it was a line to read past.
+private struct PondProgressHeader: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let solved: Int
+    let total: Int
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack {
+                Text(strings["packs_progress_label"])
+                    .font(.game(12))
+                    .foregroundStyle(palette.textSecondary)
+                Spacer()
+                Text(strings["packs_progress_value", solved, total])
+                    .font(.game(13, .bold))
+                    .foregroundStyle(palette.accent)
             }
+            ProgressTrack(
+                fraction: Double(solved) / Double(total),
+                color: palette.accent,
+                track: palette.surface,
+                height: 6
+            )
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 6)
     }
 }
 
-private struct PackHeader: View {
+enum PackState { case current, cleared, open, locked, premium }
+
+/// One pack, on a half-width card: which levels it holds, how hard it bites, and
+/// how far through it the player already is. The badge rides the title row rather
+/// than a trailing column, because half a screen has no room to spare.
+private struct PackCard: View {
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
     let pack: Pack
-    let earned: Int
-    let premiumBadge: Bool
-    let expanded: Bool
-    let onToggle: () -> Void
+    let solved: Int
+    let stars: Int
+    let state: PackState
+    let onTap: () -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            VStack(alignment: .leading, spacing: 8) {
+        let locked = state == .locked || state == .premium
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
-                    Text(strings[pack.nameKey])
-                        .font(.game(16, .bold))
-                        .foregroundStyle(palette.textPrimary)
+                    Text(strings["pack_number", pack.number])
+                        .font(.game(17, .bold))
+                        .foregroundStyle(locked ? palette.textSecondary : palette.textPrimary)
                         .lineLimit(1)
-                    if premiumBadge {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(palette.accent)
-                    }
-                    DifficultyChip(difficulty: pack.difficulty)
-                    Spacer()
-                    Text(strings["pack_stars", earned, pack.levels.count * 3])
-                        .font(.game(13, .semibold))
-                        .foregroundStyle(palette.accent)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(palette.textSecondary)
-                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    PackBadge(state: state)
                 }
-                // Star progress across the pack, at a glance.
-                GeometryReader { geo in
-                    let fraction = min(max(CGFloat(earned) / CGFloat(pack.levels.count * 3), 0), 1)
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(palette.background.opacity(0.6))
-                        if fraction > 0 {
-                            Capsule().fill(palette.accent).frame(width: geo.size.width * fraction)
-                        }
-                    }
-                }
-                .frame(height: 5)
-                if expanded {
-                    Text(strings[pack.descKey])
+                Text(strings["pack_range", pack.firstLevelNumber, pack.lastLevelNumber])
+                    .font(.game(12))
+                    .foregroundStyle(palette.textSecondary)
+                    .lineLimit(1)
+                    .padding(.top, 3)
+                DifficultyChip(difficulty: pack.difficulty)
+                    .opacity(locked ? 0.6 : 1)
+                    .padding(.top, 8)
+
+                if state == .locked {
+                    Text(strings["pack_locked_reach", pack.firstLevelNumber])
                         .font(.game(12))
                         .foregroundStyle(palette.textSecondary)
-                        .multilineTextAlignment(.leading)
+                        .lineLimit(1)
+                        .padding(.top, 9)
+                } else {
+                    ProgressTrack(
+                        fraction: Double(solved) / Double(pack.levels.count),
+                        color: palette.accent,
+                        track: palette.background.opacity(0.45),
+                        height: 5
+                    )
+                    .padding(.top, 9)
+                    Text(strings["pack_stars", stars, pack.levels.count * 3])
+                        .font(.game(12, .bold))
+                        .foregroundStyle(palette.textPrimary)
+                        .lineLimit(1)
+                        .padding(.top, 6)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            // The pack you are on sits a shade higher than the rest; a locked one
+            // fades back, so a run of unreachable cards never shouts louder than
+            // the one you can actually play.
             .background(
-                expanded ? palette.surfaceHigh : palette.surface,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                state == .current ? palette.surfaceHigh
+                    : locked ? palette.surface.opacity(0.6)
+                    : palette.surface,
+                in: shape
             )
+            .overlay {
+                if state == .current { shape.strokeBorder(palette.accent, lineWidth: 2) }
+            }
         }
         .buttonStyle(SquishyButtonStyle())
-        .padding(.top, 8)
     }
 }
 
-/// The stage's difficulty at a glance: green is easy, yellow medium, red hard
-/// and deep red the very hardest ponds.
-private struct DifficultyChip: View {
+/// The round marker on a card's title row: what this pack wants from you.
+private struct PackBadge: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let state: PackState
+
+    var body: some View {
+        let icon: String
+        let tint: Color
+        let fill: Color?
+        switch state {
+        case .current: icon = "play.fill"; tint = PondPalette.onAccent; fill = palette.accent
+        case .cleared: icon = "checkmark"; tint = palette.accent; fill = nil
+        case .open: icon = "chevron.forward"; tint = palette.textSecondary; fill = nil
+        case .locked: icon = "lock.fill"; tint = palette.textSecondary.opacity(0.7); fill = nil
+        case .premium: icon = "crown.fill"; tint = PondPalette.onAccent; fill = palette.accent
+        }
+        let label: String = switch state {
+        case .current: strings["pack_continue"]
+        case .cleared: strings["pack_cleared"]
+        case .open: strings["pack_play"]
+        case .locked: strings["level_locked"]
+        case .premium: strings["level_locked_premium"]
+        }
+
+        return Image(systemName: icon)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(tint)
+            .frame(width: 30, height: 30)
+            // Only the two badges that ask for a tap are filled; the rest sit on
+            // the card's own ground so they read as markers, not buttons.
+            .background(fill ?? palette.background.opacity(0.35), in: Circle())
+            .accessibilityLabel(label)
+    }
+}
+
+/// What the ponds in this stage actually contain - read off the maps, not declared.
+struct MechanicIcons: View {
+    let mechanics: Set<Mechanic>
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Mechanic.allCases, id: \.self) { mechanic in
+                if mechanics.contains(mechanic) {
+                    Image(systemName: symbol(mechanic))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+            }
+        }
+    }
+
+    private func symbol(_ mechanic: Mechanic) -> String {
+        switch mechanic {
+        case .rocks: "mountain.2.fill"
+        case .turtles: "tortoise.fill"
+        case .colors: "paintpalette.fill"
+        case .currents: "water.waves"
+        }
+    }
+}
+struct DifficultyChip: View {
     @Environment(\.strings) private var strings
     let difficulty: Difficulty
 
@@ -204,7 +330,7 @@ private struct DifficultyChip: View {
 }
 
 /// Sits right above the first premium pack for players who don't own it yet.
-private struct PremiumUpsellBanner: View {
+struct PremiumUpsellBanner: View {
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
     let levelCount: Int
@@ -245,12 +371,14 @@ private struct PremiumUpsellBanner: View {
 /// One level drawn as a lily leaf floating on the list: green once solved,
 /// pale while waiting, faded when locked. The notch rotates per level so a
 /// row reads like real scattered leaves.
-private struct LevelLeaf: View {
+struct LevelLeaf: View {
     @Environment(\.palette) private var palette
     let stars: Int
     let unlocked: Bool
     let premiumLocked: Bool
     let number: Int
+    /// The pond the player is up to, ringed so it is findable at a glance.
+    var current = false
     let onTap: () -> Void
 
     var body: some View {
@@ -343,6 +471,11 @@ private struct LevelLeaf: View {
             }
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if current {
+                    Circle().strokeBorder(palette.accent, lineWidth: 2).padding(2)
+                }
+            }
         }
         .buttonStyle(SquishyButtonStyle())
         .disabled(!(unlocked || premiumLocked))

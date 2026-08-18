@@ -26,6 +26,15 @@ final class GameController: ObservableObject {
     @Published private(set) var hintCell: Pos?
     @Published private(set) var hintState: HintState = .idle
 
+    /// The pond is known to be unwinnable from here. Because ducklings settle for
+    /// good, a pond can reach a dead end long before the splashes run out; rather
+    /// than let the player splash on for nothing, the board says so and offers an
+    /// undo. Every check behind this is a proof, so it never fires on a pond that
+    /// could still be finished.
+    @Published private(set) var deadEnd = false
+
+    private var deadEndCheck: Task<Void, Never>?
+
     private var history: [GameState] = []
 
     /// The rest of the solved line, kept after one solver run: as long as the
@@ -47,13 +56,14 @@ final class GameController: ObservableObject {
     func stars() -> Int {
         switch state.splashesUsed {
         case ...spec.par: 3
-        case spec.par + 1: 2
+        case ...(spec.par + 2): 2
         default: 1
         }
     }
 
     @discardableResult
     func tap(_ pos: Pos) -> Bool {
+        if deadEnd { return false } // nothing left to find here; only undo helps
         guard Engine.canSplash(state, at: pos) else { return false }
         let followedHint = solutionLine.first == pos
         history.append(state)
@@ -68,6 +78,7 @@ final class GameController: ObservableObject {
         } else {
             clearHint()
         }
+        recheckDeadEnd()
         if state.won { onWin(stars()) }
         return true
     }
@@ -78,6 +89,7 @@ final class GameController: ObservableObject {
         lastOutcome = nil
         state = previous
         generation += 1
+        recheckDeadEnd()
     }
 
     func reset() {
@@ -86,6 +98,25 @@ final class GameController: ObservableObject {
         lastOutcome = nil
         state = Engine.initial(spec)
         generation += 1
+        recheckDeadEnd()
+    }
+
+    /// Re-answers "can this still be won?" for the position just reached. The two
+    /// cheap proofs run right away; the exhaustive one runs off the main actor on
+    /// a snapshot, and is thrown away if the player has moved on meanwhile.
+    private func recheckDeadEnd() {
+        deadEndCheck?.cancel()
+        deadEnd = state.stranded || Engine.hasUnreachablePad(state)
+        if deadEnd || state.won { return }
+        let snapshot = state
+        let mark = generation
+        deadEndCheck = Task { [weak self] in
+            let lost = await Task.detached(priority: .utility) {
+                Solver.isProvablyLost(snapshot, maxDepth: 6, stateCap: 1_500)
+            }.value
+            guard !Task.isCancelled, let self, self.generation == mark else { return }
+            self.deadEnd = lost
+        }
     }
 
     /// `onShown` fires only when a hint is actually found and displayed.

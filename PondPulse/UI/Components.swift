@@ -81,18 +81,35 @@ struct GhostButton: View {
 }
 
 /// The splash budget: filled droplets are still available.
+/// The splash budget: filled droplets are still available. Roomy ponds hand out
+/// more droplets than fit across a phone, so past `maxDroplets` the row collapses
+/// to a single droplet and a count.
 struct DropletRow: View {
     @Environment(\.palette) private var palette
     let total: Int
     let left: Int
 
+    private static let maxDroplets = 12
+
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(0..<total, id: \.self) { index in
-                let available = index < left
-                Image(systemName: available ? "drop.fill" : "drop")
+            if total <= Self.maxDroplets {
+                ForEach(0..<total, id: \.self) { index in
+                    let available = index < left
+                    Image(systemName: available ? "drop.fill" : "drop")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(available ? palette.ripple : palette.textSecondary.opacity(0.4))
+                }
+            } else {
+                Image(systemName: "drop.fill")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(available ? palette.ripple : palette.textSecondary.opacity(0.4))
+                    .foregroundStyle(palette.ripple)
+                // No spaces around the solidus: with them, bidi reordering shows
+                // "5 / 15" as "15 / 5" in Arabic and Hebrew.
+                Text("\(left)/\(total)")
+                    .font(.game(15, .bold))
+                    .foregroundStyle(left <= 2 ? palette.danger : palette.textPrimary)
+                    .contentTransition(.numericText())
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: left)
@@ -153,6 +170,27 @@ struct SectionTitle: View {
 }
 
 /// Circular glassy icon button used on Home and as the screens' back button.
+/// A thin progress capsule - how far through a pack or stage the player is.
+struct ProgressTrack: View {
+    let fraction: Double
+    let color: Color
+    let track: Color
+    var height: CGFloat = 6
+
+    var body: some View {
+        GeometryReader { geo in
+            let clamped = min(max(fraction, 0), 1)
+            ZStack(alignment: .leading) {
+                Capsule().fill(track)
+                if clamped > 0 {
+                    Capsule().fill(color).frame(width: geo.size.width * clamped)
+                }
+            }
+        }
+        .frame(height: height)
+    }
+}
+
 struct RoundIconButton: View {
     @Environment(\.palette) private var palette
     let systemName: String

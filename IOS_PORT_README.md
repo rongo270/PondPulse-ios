@@ -59,8 +59,9 @@ levels/strings/themes, re-run the scripts instead of editing the Swift.
   recreates the activity; iOS applies live). Two iOS-only keys (`shop_restore`,
   `shop_restored`) live in `L10n.extras` — backport to Android with billing.
 - DEBUG launch overrides mirror linequest: `SIMCTL_CHILD_PP_START_LEVEL=<n>`
-  jumps into a level, `SIMCTL_CHILD_PP_START_SCREEN=packs|shop|rush|settings`
-  opens a screen, `SIMCTL_CHILD_PP_PREMIUM=1` grants premium in memory.
+  jumps into a level, `SIMCTL_CHILD_PP_START_PACK=pack3` opens one pack's ponds,
+  `SIMCTL_CHILD_PP_START_SCREEN=packs|shop|rush|settings` opens a screen, and
+  `SIMCTL_CHILD_PP_PREMIUM=1` grants premium in memory.
 - To test purchases locally, run from Xcode — the shared scheme already selects
   `PondPulse/Products.storekit` as its StoreKit configuration.
 
@@ -71,6 +72,53 @@ levels/strings/themes, re-run the scripts instead of editing the Swift.
   (6.9" iPhone + 13" iPad, store-exact sizes).
 - Release archive builds clean (`1.0 (1)`); one copy sits in Xcode Organizer.
   Distribution upload is the manual Organizer step (App Store Connect login).
+
+## Sync with Android, 2026-08-18
+
+Android moved a long way after the July port; this brought iOS level with it.
+
+- **Ducklings settle.** A duckling on a pad it accepts is home for good: ripples
+  and currents no longer move it, it just becomes an obstacle. `LevelSpec.isSettled`
+  plus the two dead-end proofs (`GameState.stranded` over Hall's condition, and
+  `Engine.hasUnreachablePad`) and `Solver.isProvablyLost` for the exhaustive one.
+  A pond that can no longer be won now says so and offers an undo instead of
+  letting the player splash on.
+- **All 450 levels were redrawn** on Android and regenerated here, plus the
+  **30 golden bonus ponds** (`BonusMaps.swift`) and the measured toughness table
+  (`Toughness.swift`) that decides play order. Star bands widened to par + 2 for
+  two stars, so one star is reachable inside the budget.
+- **Two-tier navigation.** Nine packs of 37-73 ponds, each cut into three or four
+  browsable stages of 10-20, each stage closed by a golden pond. `PacksView` is
+  the nine-card gallery; `PackLevelsView` is new — stage tabs, the level grid, the
+  golden-pond row and a pack stepper.
+- **Wrong level opening (fixed).** The old packs list nested `ForEach(rows, id: \.offset)`
+  inside a `LazyVStack`, so every expanded pack numbered its rows 0,1,2… and
+  SwiftUI treated different packs' rows as the same view. With two packs open the
+  second one's grid rendered the first one's leaves, and tapping "31" opened
+  someone else's pond. Identity is now the pack and the level id, never a row index.
+- Golden cosmetics (`Unlock.bonusReward`): Golden Pond theme at 10 ponds, Gosling
+  skin at 20, Golden Lily pad at 3. Clearing a golden pond pays 5 hints, once ever,
+  tracked separately from stars so a progress reset doesn't reprint the reward.
+- The shop now reads as free during early access throughout — the hint pack was
+  the one card still quoting $0.99 while every other surface said free. StoreKit
+  plumbing is untouched, so flipping back is one constant in `Catalog`.
+
+### Verifying a level port
+
+`tools/convert_levels.py` moves the data; the check that the *engine* agrees with
+Android is to solve every pond and confirm BFS optimal == par (Android's
+`LevelDoctorTest` invariant), then replay the solver's own line and confirm it
+wins under the live rules. The engine has no UI dependencies, so it compiles
+standalone:
+
+```bash
+xcrun swiftc -O -o /tmp/verify PondPulse/Game/Engine.swift \
+  PondPulse/Game/LevelParser.swift PondPulse/Levels/*.swift main.swift
+```
+
+Last run: 450 levels + 30 bonus ponds, 9 packs, 30 stages, 0 problems — every
+pond solvable at par, none starting dead, and every tile's printed number
+resolving back to the pond it opens.
 
 ## Still to do
 

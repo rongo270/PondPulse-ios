@@ -74,6 +74,8 @@ nonisolated struct LevelSpec: Sendable {
     let par: Int
     let maxSplashes: Int
     let tip: String?
+    /// Bonus ponds sit outside the level count: a golden reward stage per pack.
+    var isBonus: Bool = false
 
     func terrainAt(_ pos: Pos) -> Terrain {
         guard (0..<cols).contains(pos.x), (0..<rows).contains(pos.y) else { return .bank }
@@ -84,6 +86,14 @@ nonisolated struct LevelSpec: Sendable {
     func padAccepts(_ pos: Pos, _ color: DuckColor?) -> Bool {
         guard let padColor = pads[pos] else { return false }
         return padColor == nil || padColor == color
+    }
+
+    /// A duckling that has climbed onto a pad it accepts. Settled ducklings are
+    /// home for good: ripples and currents no longer move them, so progress can
+    /// never be washed away. They still take up their cell, so they block other
+    /// floaters like any obstacle.
+    func isSettled(_ floater: Floater) -> Bool {
+        floater.kind == .duck && padAccepts(floater.pos, floater.color)
     }
 
     var duckCount: Int { floaters.count { $0.kind == .duck } }
@@ -104,6 +114,27 @@ nonisolated struct GameState: Sendable {
 
     /// Out of splashes with ducklings still adrift.
     var stuck: Bool { !won && splashesLeft <= 0 }
+
+    /// No arrangement of the ducklings still adrift can fill the pads still free
+    /// - settled ducklings never move, so a pad they took is gone for good, and
+    /// plain pads accept every color. Exactly Hall's condition over the four
+    /// duckling groups, so it never cries wolf: when this is true the pond truly
+    /// cannot be finished and the player is offered an undo instead.
+    var stranded: Bool {
+        if won { return false }
+        let takenPads = Set(floaters.filter { spec.isSettled($0) }.map(\.pos))
+        let freePads = spec.pads.filter { !takenPads.contains($0.key) }
+        let plainPads = freePads.values.count { $0 == nil }
+        var padsByColor: [DuckColor: Int] = [:]
+        for case let color? in freePads.values { padsByColor[color, default: 0] += 1 }
+
+        let adrift = floaters.filter { $0.kind == .duck && !spec.isSettled($0) }
+        var adriftByColor: [DuckColor: Int] = [:]
+        for case let color? in adrift.map(\.color) { adriftByColor[color, default: 0] += 1 }
+        let needPlainPad = adrift.count { $0.color == nil }
+            + adriftByColor.reduce(0) { $0 + max(0, $1.value - (padsByColor[$1.key] ?? 0)) }
+        return needPlainPad > plainPads
+    }
 }
 
 /// One floater's movement during a splash, kept for animation. from == to means blocked.
@@ -128,6 +159,8 @@ nonisolated enum Engine {
     }
 
     /// Splashes are only allowed on open water - not on banks, rocks or floaters.
+    /// Deliberately does not consult `GameState.stranded`: that is a UI-level
+    /// courtesy, and keeping it out of here leaves the search loop allocation-free.
     static func canSplash(_ state: GameState, at: Pos) -> Bool {
         !state.won && !state.stuck &&
             state.spec.terrainAt(at) == .water &&
@@ -152,6 +185,10 @@ nonisolated enum Engine {
         var pushes: [MoveTrace] = []
         for floater in pushOrder {
             let current = moved[floater.id]!
+            if spec.isSettled(current) {
+                pushes.append(MoveTrace(id: floater.id, from: current.pos, to: current.pos))
+                continue
+            }
             let dir = Pos(
                 x: (current.pos.x - at.x).signum(),
                 y: (current.pos.y - at.y).signum()
@@ -169,12 +206,14 @@ nonisolated enum Engine {
         }
 
         // Current phase: one slide per floater standing on an arrow, in grid order.
+        // Ducklings that just settled ignore the arrow under them.
         var slides: [MoveTrace] = []
         let slideOrder = moved.values.sorted { a, b in
             if a.pos.y != b.pos.y { return a.pos.y < b.pos.y }
             return a.pos.x < b.pos.x
         }
         for floater in slideOrder {
+            if spec.isSettled(floater) { continue }
             guard let dir = spec.currents[floater.pos] else { continue }
             let target = Pos(x: floater.pos.x + dir.dx, y: floater.pos.y + dir.dy)
             let free = spec.terrainAt(target) == .water && occupied[target] == nil
@@ -197,12 +236,91 @@ nonisolated enum Engine {
     static func chebyshev(_ a: Pos, _ b: Pos) -> Int {
         max(abs(a.x - b.x), abs(a.y - b.y))
     }
+
+    /// Whether some duckling still adrift can no longer reach any pad that would
+    /// take it, no matter how the rest of the pond is played.
+    ///
+    /// The walk deliberately pretends the pond is empty of other floaters, so the
+    /// set of cells it finds is larger than what is truly reachable. That makes a
+    /// "no" here a proof: if a duckling cannot reach a pad even with the water to
+    /// itself, it certainly cannot with traffic in the way. It catches the classic
+    /// trap of a duckling pinned against a bank - a splash can only push a floater
+    /// *away* from it, so a duckling in the leftmost column can never be moved
+    /// right, and is stuck in that column forever.
+    static func hasUnreachablePad(_ state: GameState) -> Bool {
+        let spec = state.spec
+        return state.floaters.contains { floater in
+            floater.kind == .duck && !spec.isSettled(floater) && !canReachAPad(spec, floater)
+        }
+    }
+
+    private static func canReachAPad(_ spec: LevelSpec, _ duck: Floater) -> Bool {
+        var seen: Set<Pos> = [duck.pos]
+        var queue: [Pos] = [duck.pos]
+        var head = 0
+        while head < queue.count {
+            let at = queue[head]
+            head += 1
+            if spec.padAccepts(at, duck.color) { return true } // settles here, done
+            // A splash whose push is blocked still counts as a splash, and the
+            // current under the duckling fires afterwards regardless. That is the
+            // one way off a bank-pinned cell, so leaving it out told players a
+            // pond was dead when the water was about to carry them out of it.
+            if let dir = spec.currents[at] {
+                let slid = Pos(x: at.x + dir.dx, y: at.y + dir.dy)
+                if spec.terrainAt(slid) == .water, seen.insert(slid).inserted { queue.append(slid) }
+            }
+            for dx in -1...1 {
+                for dy in -1...1 {
+                    if dx == 0 && dy == 0 { continue }
+                    if !canBePushed(spec, at, dx, dy) { continue }
+                    let pushed = Pos(x: at.x + dx, y: at.y + dy)
+                    if spec.terrainAt(pushed) != .water { continue }
+                    if seen.insert(pushed).inserted { queue.append(pushed) }
+                    // The current under the landing cell may carry it one further,
+                    // or may be blocked by traffic: both endings stay possible.
+                    guard let dir = spec.currents[pushed] else { continue }
+                    let slid = Pos(x: pushed.x + dir.dx, y: pushed.y + dir.dy)
+                    if spec.terrainAt(slid) == .water, seen.insert(slid).inserted { queue.append(slid) }
+                }
+            }
+        }
+        return false
+    }
+
+    /// Whether any splashable cell would push a floater at `at` along (`dx`, `dy`).
+    /// The push direction is the sign of the offset from the splash, so this asks
+    /// whether the pond has water on the opposite side.
+    private static func canBePushed(_ spec: LevelSpec, _ at: Pos, _ dx: Int, _ dy: Int) -> Bool {
+        for y in 0..<spec.rows {
+            for x in 0..<spec.cols {
+                if x == at.x && y == at.y { continue }
+                if spec.terrainAt(Pos(x: x, y: y)) != .water { continue }
+                if (at.x - x).signum() == dx && (at.y - y).signum() == dy { return true }
+            }
+        }
+        return false
+    }
 }
 
 /// Breadth-first search over floater layouts. Floaters of the same kind and
 /// color are interchangeable, so states are canonicalized by sorting - this
 /// keeps the frontier small enough for every hand-made level.
 nonisolated enum Solver {
+
+    /// A position, independent of which floater is which: (kind, color, y, x)
+    /// packed into one Int per floater, sorted. Two states with the same key are
+    /// the same puzzle position.
+    fileprivate struct NodeKey: Hashable {
+        let layout: [Int]
+
+        init(_ floaters: [Floater]) {
+            layout = floaters.map { f in
+                (((f.kind.rawValue &* 8 &+ (f.color.map { $0.rawValue + 1 } ?? 0)) &* 1024
+                    &+ f.pos.y) &* 1024) &+ f.pos.x
+            }.sorted()
+        }
+    }
 
     static let defaultStateCap = 400_000
 
@@ -220,23 +338,10 @@ nonisolated enum Solver {
         let spec = state.spec
         let taps = tapCandidates(spec)
 
-        struct NodeKey: Hashable {
-            let layout: [Int]
-        }
-
-        func keyOf(_ floaters: [Floater]) -> NodeKey {
-            // (kind, color, y, x) packed into one comparable Int per floater.
-            let packed = floaters.map { f in
-                (((f.kind.rawValue &* 8 &+ (f.color.map { $0.rawValue + 1 } ?? 0)) &* 1024
-                    &+ f.pos.y) &* 1024) &+ f.pos.x
-            }.sorted()
-            return NodeKey(layout: packed)
-        }
-
         var start = state
         start.splashesUsed = 0
         var seen = Set<NodeKey>()
-        seen.insert(keyOf(start.floaters))
+        seen.insert(NodeKey(start.floaters))
         // Each queue entry carries the taps that led to it, so reconstructing
         // the winning line is free; paths are short so the memory cost is tiny.
         var frontier: [(GameState, [Pos])] = [(start, [])]
@@ -247,7 +352,7 @@ nonisolated enum Solver {
                 for tap in taps {
                     if current.floaters.contains(where: { $0.pos == tap }) { continue }
                     let outcome = Engine.splash(current, at: tap)
-                    let key = keyOf(outcome.state.floaters)
+                    let key = NodeKey(outcome.state.floaters)
                     if !seen.insert(key).inserted { continue }
                     if outcome.state.won { return path + [tap] }
                     if seen.count > stateCap { return nil }
@@ -260,6 +365,49 @@ nonisolated enum Solver {
             frontier = next
         }
         return nil
+    }
+
+    /// Whether the pond is provably lost from `state`: the search visited every
+    /// position reachable from here and none of them wins.
+    ///
+    /// Only ever answers true on that proof. Running out of depth or hitting
+    /// `stateCap` answers false - "don't know" has to read as hope, or the game
+    /// would tell a player their winnable pond is dead. Since settled ducklings
+    /// stop moving, the reachable set shrinks as a level is played, which is
+    /// exactly when this can finish.
+    static func isProvablyLost(
+        _ state: GameState,
+        maxDepth: Int = 12,
+        stateCap: Int = defaultStateCap
+    ) -> Bool {
+        if state.won { return false }
+        if state.stranded { return true } // the pads alone already settle it
+
+        let taps = tapCandidates(state.spec)
+        var seen: Set<NodeKey> = [NodeKey(state.floaters)]
+        var start = state
+        start.splashesUsed = 0
+        var frontier = [start]
+
+        for _ in 0..<maxDepth {
+            var next: [GameState] = []
+            for current in frontier {
+                for tap in taps {
+                    if current.floaters.contains(where: { $0.pos == tap }) { continue }
+                    let outcome = Engine.splash(current, at: tap)
+                    if !seen.insert(NodeKey(outcome.state.floaters)).inserted { continue }
+                    if outcome.state.won { return false }
+                    if seen.count > stateCap { return false } // gave up, so: unknown
+                    var reset = outcome.state
+                    reset.splashesUsed = 0
+                    next.append(reset)
+                }
+            }
+            // Nothing new to try anywhere: the whole reachable set is a dead end.
+            if next.isEmpty { return true }
+            frontier = next
+        }
+        return false
     }
 
     private static func tapCandidates(_ spec: LevelSpec) -> [Pos] {

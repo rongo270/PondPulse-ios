@@ -18,14 +18,21 @@ struct GameView: View {
     @Environment(\.strings) private var strings
     @State private var showWinCard = false
     @State private var showHintsOut = false
-
     init(vm: AppViewModel, levelId: String) {
         self.vm = vm
         self.levelId = levelId
-        _controller = StateObject(wrappedValue: GameController(spec: Levels.byId(levelId)) { stars in
-            vm.recordWin(levelId: levelId, stars: stars)
+        let spec = Levels.byId(levelId)
+        _controller = StateObject(wrappedValue: GameController(spec: spec) { stars in
+            if spec.isBonus {
+                vm.recordBonusWin(levelId: levelId, stars: stars)
+            } else {
+                vm.recordWin(levelId: levelId, stars: stars)
+            }
         })
     }
+
+    /// True when this clear was the pond's first, i.e. when hints were paid out.
+    private var bonusHintsWon: Bool { vm.bonusHintsPaidFor == levelId }
 
     var body: some View {
         let state = controller.state
@@ -38,9 +45,11 @@ struct GameView: View {
                     RoundIconButton(systemName: "chevron.backward") { vm.back() }
                     Spacer()
                     VStack(spacing: 1) {
-                        Text(strings["level_title", vm.globalLevelNumber(levelId)])
+                        Text(spec.isBonus
+                            ? strings["bonus_title"]
+                            : strings["level_title", vm.globalLevelNumber(levelId)])
                             .font(.game(17, .bold))
-                            .foregroundStyle(palette.textPrimary)
+                            .foregroundStyle(spec.isBonus ? palette.star : palette.textPrimary)
                         Text(strings["game_ducks_home", state.ducksHome, spec.duckCount])
                             .font(.game(12, .semibold))
                             .foregroundStyle(palette.textSecondary)
@@ -48,6 +57,7 @@ struct GameView: View {
                     }
                     Spacer()
                     RoundIconButton(systemName: "arrow.counterclockwise") {
+                        vm.clearBonusPayoutNotice()
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { controller.reset() }
                     }
                 }
@@ -119,14 +129,14 @@ struct GameView: View {
             }
 
             // Out-of-splashes overlay.
-            if state.stuck {
+            if state.stuck || controller.deadEnd {
                 stuckCard
                     .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: state.won)
         .animation(.easeInOut(duration: 0.25), value: showWinCard)
-        .animation(.easeInOut(duration: 0.25), value: state.stuck)
+        .animation(.easeInOut(duration: 0.25), value: state.stuck || controller.deadEnd)
         .task(id: state.won) {
             if state.won {
                 try? await Task.sleep(for: .seconds(1.1))
@@ -136,7 +146,7 @@ struct GameView: View {
             }
         }
         .alert(strings["hints_out_title"], isPresented: $showHintsOut) {
-            Button(strings["hints_buy_cta", vm.price(Catalog.hintsId, fallback: Catalog.hintsPrice)]) {
+            Button(strings["hints_buy_cta", Catalog.hintsPerPack]) {
                 Task { await vm.purchase(Catalog.hintsId) }
             }
             Button(strings["win_get_premium"]) {
@@ -168,12 +178,22 @@ struct GameView: View {
         let spec = controller.spec
         let stars = controller.stars()
         let levelNumber = vm.globalLevelNumber(levelId)
-        let rewardSkin = Catalog.skins.first { $0.unlock.rewardLevel == levelNumber }
-        let rewardTheme = Catalog.themes.first { $0.unlock.rewardLevel == levelNumber }
-        let rewardPad = Catalog.pads.first { $0.unlock.rewardLevel == levelNumber }
+        let bonusCleared = vm.bonusPondsCleared()
+        // A cosmetic is celebrated only on the very clear that earns it.
+        func justEarned(_ unlock: Unlock) -> Bool {
+            if let level = unlock.rewardLevel { return !spec.isBonus && level == levelNumber }
+            // bonusHintsWon marks a first-ever clear, so replays stay quiet.
+            if let count = unlock.rewardBonusPonds {
+                return spec.isBonus && bonusHintsWon && count == bonusCleared
+            }
+            return false
+        }
+        let rewardSkin = Catalog.skins.first { justEarned($0.unlock) }
+        let rewardTheme = Catalog.themes.first { justEarned($0.unlock) }
+        let rewardPad = Catalog.pads.first { justEarned($0.unlock) }
 
         return OverlayCard {
-            SectionTitle(strings["win_title"])
+            SectionTitle(strings[spec.isBonus ? "bonus_win_title" : "win_title"])
             StarsRow(stars: stars)
             Text(winMessage(state: state, spec: spec))
                 .font(.game(14))
@@ -194,7 +214,14 @@ struct GameView: View {
                 }
             }
 
-            if let next = Levels.next(levelId) {
+            // Finishing a run of ponds opens a golden one. Offer it right here -
+            // it is otherwise buried in the level list, and nobody would find it.
+            let openBonus = spec.isBonus ? nil : vm.openBonus(Levels.packOf(levelId))
+            if let openBonus {
+                PrimaryButton(strings["bonus_play_cta"]) {
+                    vm.replaceTop(.game(levelId: openBonus.level.id))
+                }
+            } else if let next = Levels.next(levelId) {
                 if vm.isPremiumLevel(next.id) && !vm.isPremium {
                     PrimaryButton(strings["win_get_premium"]) { vm.navigate(.shop) }
                 } else {
@@ -202,7 +229,7 @@ struct GameView: View {
                 }
             }
             HStack(spacing: 10) {
-                GhostButton(strings["win_replay"]) { controller.reset() }
+                GhostButton(strings["win_replay"]) { vm.clearBonusPayoutNotice(); controller.reset() }
                 GhostButton(strings["all_levels"]) {
                     vm.back()
                     if vm.current != .packs { vm.navigate(.packs) }
@@ -212,20 +239,33 @@ struct GameView: View {
     }
 
     private func winMessage(state: GameState, spec: LevelSpec) -> String {
+        if spec.isBonus {
+            return bonusHintsWon
+                ? strings["bonus_win_hints", ProgressStore.bonusHintReward]
+                : strings["bonus_win_again"]
+        }
         if state.splashesUsed <= spec.par { return strings["win_par"] }
         if state.splashesLeft > 0 { return strings["win_over_par", state.splashesLeft] }
         return strings["win_exact"]
     }
 
     private var stuckCard: some View {
-        OverlayCard {
-            SectionTitle(strings["fail_title"])
-            Text(strings["fail_body"])
+        let state = controller.state
+        let titleKey = state.stranded ? "stranded_title"
+            : controller.deadEnd ? "deadend_title"
+            : "fail_title"
+        let bodyKey = state.stranded ? "stranded_body"
+            : controller.deadEnd ? "deadend_body"
+            : "fail_body"
+
+        return OverlayCard {
+            SectionTitle(strings[titleKey])
+            Text(strings[bodyKey])
                 .font(.game(14))
                 .foregroundStyle(palette.textSecondary)
                 .multilineTextAlignment(.center)
             PrimaryButton(strings["undo"]) { controller.undo() }
-            GhostButton(strings["restart"]) { controller.reset() }
+            GhostButton(strings["restart"]) { vm.clearBonusPayoutNotice(); controller.reset() }
         }
     }
 }

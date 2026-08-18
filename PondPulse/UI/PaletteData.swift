@@ -312,4 +312,32 @@ extension PondPalette {
         danger: Color(hex: 0xFF6B6B),
     )
 
+    /// Warm gold on still green water - earned by clearing bonus ponds.
+    static let goldenPond = PondPalette(
+        isDark: true,
+        background: Color(hex: 0x2A1F0C),
+        backgroundHigh: Color(hex: 0x362813),
+        surface: Color(hex: 0x43331A),
+        surfaceHigh: Color(hex: 0x534023),
+        outline: Color(hex: 0x8A6B34),
+        textPrimary: Color(hex: 0xFFF6E2),
+        textSecondary: Color(hex: 0xCDAE79),
+        accent: Color(hex: 0xFFD166),
+        water: Color(hex: 0x3C6B4A),
+        waterDeep: Color(hex: 0x2F583C),
+        waterRim: Color(hex: 0xB08A3E),
+        ripple: Color(hex: 0xFFE9B0),
+        rock: Color(hex: 0x9A8360),
+        rockDark: Color(hex: 0x6F5C41),
+        pad: Color(hex: 0x8FBF4C),
+        padDark: Color(hex: 0x6C9636),
+        duck: Color(hex: 0xFFCE3D),
+        duckShade: Color(hex: 0xE0A824),
+        beak: Color(hex: 0xFF8A3D),
+        turtle: Color(hex: 0x87A45C),
+        turtleShell: Color(hex: 0x63803F),
+        current: Color(hex: 0xFFE1A0),
+        star: Color(hex: 0xFFD166),
+        danger: Color(hex: 0xFF7A5C),
+    )
 }

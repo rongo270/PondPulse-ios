@@ -6,7 +6,7 @@ import re
 import xml.etree.ElementTree as ET
 
 RES = "/Users/rongo/AndroidStudioProjects/PondPulse/app/src/main/res"
-OUT = "/Users/rongo/Desktop/ios/PondPulse/PondPulse/L10nTables.swift"
+OUT = "/Users/rongo/Desktop/ios/PondPulse/PondPulse/Localization/L10nTables.swift"
 
 LOCALES = [
     ("values", "en"), ("values-ar", "ar"), ("values-de", "de"), ("values-es", "es"),

@@ -214,7 +214,7 @@ private struct RushPlay: View {
                 .frame(maxWidth: .infinity)
                 Spacer(minLength: 0)
 
-                Text(state.stuck ? strings["rush_stuck"] : " ")
+                Text(state.stuck || controller.deadEnd ? strings["rush_stuck"] : " ")
                     .font(.game(14))
                     .foregroundStyle(palette.textSecondary)
                     .multilineTextAlignment(.center)
@@ -243,8 +243,8 @@ private struct RushPlay: View {
             }
         }
         // A dead end just resets the same pond - the clock is punishment enough.
-        .task(id: state.stuck) {
-            if state.stuck {
+        .task(id: state.stuck || controller.deadEnd) {
+            if state.stuck || controller.deadEnd {
                 try? await Task.sleep(for: .seconds(0.7))
                 if !Task.isCancelled { controller.reset() }
             }

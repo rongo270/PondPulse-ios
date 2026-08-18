@@ -48,6 +48,8 @@ struct RootView: View {
             HomeView(vm: vm)
         case .packs:
             PacksView(vm: vm)
+        case .packLevels(let packId):
+            PackLevelsView(vm: vm, packId: packId)
         case .game(let levelId):
             GameView(vm: vm, levelId: levelId)
         case .settings:
@@ -65,6 +67,7 @@ struct RootView: View {
         switch screen {
         case .home: "home"
         case .packs: "packs"
+        case .packLevels(let packId): "packlevels-\(packId)"
         case .game(let levelId): "game-\(levelId)"
         case .settings: "settings"
         case .shop: "shop"

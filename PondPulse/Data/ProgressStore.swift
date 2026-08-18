@@ -15,6 +15,9 @@ struct ProgressStore {
     /// Hints every install starts with; buying packs adds more.
     static let freeHints = 150
 
+    /// Hints paid out the first time a bonus pond is cleared.
+    static let bonusHintReward = 5
+
     private let defaults = UserDefaults.standard
 
     private enum Keys {
@@ -26,6 +29,10 @@ struct ProgressStore {
         static let hintsLeft = "hints_left"
         static let hintedLevels = "hinted_levels"
         static let language = "app_language"
+        /// Bonus ponds that have already paid out their hints. Kept apart from
+        /// the stars so that resetting progress replays the ponds without
+        /// reprinting the reward.
+        static let bonusPaid = "bonus_paid"
         static func stars(_ levelId: String) -> String { "stars_\(levelId)" }
         static func rushBest(_ durationSec: Int) -> String { "rush_best_\(durationSec)" }
     }
@@ -39,9 +46,9 @@ struct ProgressStore {
         defaults.object(forKey: Keys.haptics) as? Bool ?? true
     }
 
-    /// levelId -> stars (0 = unsolved).
+    /// levelId -> stars (0 = unsolved), bonus ponds included.
     var stars: [String: Int] {
-        Dictionary(uniqueKeysWithValues: Levels.all.map {
+        Dictionary(uniqueKeysWithValues: (Levels.all + Levels.bonusPonds).map {
             ($0.id, defaults.integer(forKey: Keys.stars($0.id)))
         })
     }
@@ -112,6 +119,25 @@ struct ProgressStore {
         defaults.set(max(defaults.integer(forKey: key), stars), forKey: key)
     }
 
+    /// Same, for a bonus pond: the very first clear also pays out its hints.
+    /// The separate `bonusPaid` ledger keeps the payout exactly-once even across
+    /// a progress reset. Returns whether the hints were granted, so the win card
+    /// can say so.
+    func recordBonusResult(levelId: String, stars: Int) -> Bool {
+        let key = Keys.stars(levelId)
+        let previous = defaults.integer(forKey: key)
+        var paid = Set(defaults.stringArray(forKey: Keys.bonusPaid) ?? [])
+        var granted = false
+        if previous == 0 && !paid.contains(levelId) {
+            paid.insert(levelId)
+            defaults.set(Array(paid).sorted(), forKey: Keys.bonusPaid)
+            setHintsLeft(hintsLeft + Self.bonusHintReward)
+            granted = true
+        }
+        defaults.set(max(previous, stars), forKey: key)
+        return granted
+    }
+
     /// Keeps the best Splash Rush score for the duration.
     func recordRushBest(durationSec: Int, score: Int) {
         let key = Keys.rushBest(durationSec)
@@ -120,7 +146,9 @@ struct ProgressStore {
 
     /// Clears stars and rush bests - purchases and cosmetics survive a reset.
     func resetProgress() {
-        for level in Levels.all { defaults.removeObject(forKey: Keys.stars(level.id)) }
+        for level in Levels.all + Levels.bonusPonds {
+            defaults.removeObject(forKey: Keys.stars(level.id))
+        }
         for sec in Self.rushDurations { defaults.removeObject(forKey: Keys.rushBest(sec)) }
         defaults.removeObject(forKey: Keys.hintedLevels)
     }
