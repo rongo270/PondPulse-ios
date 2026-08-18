@@ -68,6 +68,25 @@ struct PadItem: Identifiable {
 
 enum Catalog {
 
+    // ---------------------------------------------------------------------
+    // Development switch: every theme, pond friend and lily pad is unlocked,
+    // whatever it normally costs or asks you to earn.
+    //
+    // It is ANDed with a #if DEBUG check below, so leaving it switched on can
+    // never ship an unlocked shop to the App Store - a release build locks up
+    // again by itself. The premium *levels* still follow `isPremium`; this is
+    // about the cosmetics the shop sells.
+    // ---------------------------------------------------------------------
+    static let unlockAllCosmetics = true
+
+    static var cosmeticsUnlocked: Bool {
+        #if DEBUG
+        return unlockAllCosmetics
+        #else
+        return false
+        #endif
+    }
+
     /// Levels from this global number on need the premium upgrade.
     static let premiumFromLevel = 301
 

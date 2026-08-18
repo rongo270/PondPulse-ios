@@ -30,6 +30,7 @@ struct ShopView: View {
             VStack(spacing: 0) {
                 ScreenHeader(title: strings["shop_title"], onBack: { vm.back() })
 
+                ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         PremiumCard(
@@ -55,6 +56,7 @@ struct ShopView: View {
                             ownedCount: visibleThemes.count { usable($0.unlock, Catalog.themeProductId($0.id)) },
                             totalCount: visibleThemes.count
                         )
+                        .id("section-themes")
                         ForEach(visibleThemes) { theme in
                             ThemeRow(
                                 theme: theme,
@@ -71,7 +73,8 @@ struct ShopView: View {
                             ownedCount: visibleSkins.count { usable($0.unlock, Catalog.skinProductId($0.id)) },
                             totalCount: visibleSkins.count
                         )
-                        grid(items: visibleSkins) { skin in
+                        .id("section-skins")
+                        grid(section: "skins", items: visibleSkins) { skin in
                             ShopGridCard(
                                 name: strings[skin.nameKey],
                                 unlock: skin.unlock,
@@ -93,7 +96,8 @@ struct ShopView: View {
                             ownedCount: visiblePads.count { usable($0.unlock, Catalog.padProductId($0.id)) },
                             totalCount: visiblePads.count
                         )
-                        grid(items: visiblePads) { pad in
+                        .id("section-pads")
+                        grid(section: "pads", items: visiblePads) { pad in
                             ShopGridCard(
                                 name: strings[pad.nameKey],
                                 unlock: pad.unlock,
@@ -132,6 +136,18 @@ struct ShopView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.bottom, 32)
+                }
+                // DEBUG-only: open the shop already scrolled to one section, so a
+                // screenshot run can cover the parts that live below the fold.
+                .onAppear {
+                    #if DEBUG
+                    if let section = ProcessInfo.processInfo.environment["PP_SHOP_SECTION"] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            proxy.scrollTo("section-\(section)", anchor: .top)
+                        }
+                    }
+                    #endif
+                }
                 }
             }
             .pondContentWidth()
@@ -201,11 +217,14 @@ struct ShopView: View {
         unlock.price.map { vm.price(productId, fallback: $0) }
     }
 
+    /// `section` names the grid, because two of these live in one LazyVStack: keyed
+    /// by row index alone, the pads' first row and the skins' first row are the same
+    /// identity to SwiftUI, and the second grid never renders at all.
     private func grid<Item: Identifiable, Card: View>(
-        items: [Item], @ViewBuilder card: @escaping (Item) -> Card
+        section: String, items: [Item], @ViewBuilder card: @escaping (Item) -> Card
     ) -> some View {
         let rows = stride(from: 0, to: items.count, by: 3).map { Array(items[$0..<min($0 + 3, items.count)]) }
-        return ForEach(Array(rows.enumerated()), id: \.offset) { _, rowItems in
+        return ForEach(Array(rows.enumerated()), id: \.offset) { index, rowItems in
             HStack(alignment: .top, spacing: 10) {
                 ForEach(rowItems) { item in
                     card(item).frame(maxWidth: .infinity)
@@ -214,6 +233,7 @@ struct ShopView: View {
                     Color.clear.frame(maxWidth: .infinity)
                 }
             }
+            .id("\(section)-row-\(index)")
         }
     }
 }

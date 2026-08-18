@@ -221,12 +221,13 @@ final class AppViewModel: ObservableObject {
 
     /// Whether a shop item is usable right now (free, earned, or bought).
     func isOwned(_ unlock: Unlock, productId: String) -> Bool {
+        if Catalog.cosmeticsUnlocked { return true }
         switch unlock {
-        case .free: true
-        case .levelReward(let level): highestSolvedLevel() >= level
-        case .bonusReward(let count): bonusPondsCleared() >= count
-        case .premium: isPremium
-        case .paid: owned.contains(productId)
+        case .free: return true
+        case .levelReward(let level): return highestSolvedLevel() >= level
+        case .bonusReward(let count): return bonusPondsCleared() >= count
+        case .premium: return isPremium
+        case .paid: return owned.contains(productId)
         }
     }
 
