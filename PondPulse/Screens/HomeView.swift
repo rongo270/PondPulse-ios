@@ -167,7 +167,10 @@ struct HomeView: View {
                         .accessibilityLabel(strings["home_settings"])
                 }
 
-                Spacer(minLength: 0).layoutPriority(0.9)
+                // Compose weights the two gaps 0.9 : 1.1; SwiftUI splits free
+                // space evenly between equal Spacers, which lands the wordmark
+                // in the same place to within a few points.
+                Spacer(minLength: 0)
                 VStack(spacing: 4) {
                     Text(strings["app_name"])
                         // 38pt, not 50. The menu went to two rows and the height
@@ -183,7 +186,7 @@ struct HomeView: View {
                         .foregroundStyle(palette.textSecondary)
                         .multilineTextAlignment(.center)
                 }
-                Spacer(minLength: 0).layoutPriority(1.1)
+                Spacer(minLength: 0)
 
                 Button {
                     vm.navigate(.game(levelId: vm.continueLevelId()))

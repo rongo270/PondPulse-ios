@@ -309,6 +309,14 @@ private func span(_ a: CGPoint, _ b: CGPoint, _ aspect: CGFloat) -> CGFloat {
 }
 
 /// The shared skeleton: one clock, and the canvas size the taps need.
+///
+/// Every game steps its engine from inside its `Canvas` draw closure rather than
+/// from a modifier beside it. That is not a style choice: a `Canvas` whose
+/// closure captures nothing that changes between frames is one SwiftUI is free
+/// to leave exactly as it drew it, and a game stepped from an `onChange` next
+/// door captures only reference types that never change - so the water froze on
+/// frame one while the HUD above it carried on counting. Reading the frame's
+/// date inside the closure is what ties the drawing to the clock.
 private class GameEngine {
     var time: CGFloat = 0
     var lastTick: Date?
@@ -386,6 +394,7 @@ private struct RippleChainView: View {
     private func canvas(_ date: Date) -> some View {
         Canvas { ctx, size in
             engine.note(size)
+            engine.step(dt: engine.advance(to: date))
             let time = engine.time
             let w = size.width
             let h = size.height
@@ -434,8 +443,7 @@ private struct RippleChainView: View {
             Haptics.splash(enabled: vm.haptics)
             engine.tap(at: at)
         }
-        .onChange(of: date) { _, now in
-            engine.step(dt: engine.advance(to: now))
+        .onChange(of: date) { _, _ in
             if let result = engine.takeResult() { onEnd(result) }
         }
     }
@@ -677,6 +685,7 @@ private struct DucklingRoundUpView: View {
     private func canvas(_ engine: HerdEngine, _ date: Date) -> some View {
         Canvas { ctx, size in
             engine.note(size)
+            engine.step(dt: engine.advance(to: date))
             let time = engine.time
             let w = size.width
             let h = size.height
@@ -729,8 +738,7 @@ private struct DucklingRoundUpView: View {
             Haptics.splash(enabled: vm.haptics)
             engine.splash(at: at)
         }
-        .onChange(of: date) { _, now in
-            engine.step(dt: engine.advance(to: now))
+        .onChange(of: date) { _, _ in
             if let result = engine.takeResult() { onEnd(result) }
         }
     }
@@ -1000,6 +1008,7 @@ private struct HideAndSeekView: View {
     private func canvas(_ date: Date) -> some View {
         Canvas { ctx, size in
             engine.note(size)
+            engine.step(dt: engine.advance(to: date))
             let time = engine.time
             let w = size.width
             let h = size.height
@@ -1068,8 +1077,7 @@ private struct HideAndSeekView: View {
             engine.pick(at.x)
             Haptics.splash(enabled: vm.haptics)
         }
-        .onChange(of: date) { _, now in
-            engine.step(dt: engine.advance(to: now))
+        .onChange(of: date) { _, _ in
             if let result = engine.takeResult() { onEnd(result) }
         }
     }
@@ -1246,6 +1254,7 @@ private struct SplashTargetView: View {
     private func canvas(_ date: Date) -> some View {
         Canvas { ctx, size in
             engine.note(size)
+            engine.step(dt: engine.advance(to: date))
             let time = engine.time
             let w = size.width
             let h = size.height
@@ -1325,10 +1334,11 @@ private struct SplashTargetView: View {
             engine.tapsLeft -= 1
             engine.splash(at: at)
         }
-        .onChange(of: date) { _, now in
-            if engine.step(dt: engine.advance(to: now)) {
-                Haptics.splash(enabled: vm.haptics)
-            }
+        .onChange(of: date) { _, _ in
+            // The buzz for a landed duckling is raised by the step and spent
+            // here: a haptic fired from inside a draw pass is a side effect in
+            // a render, and one dropped frame would fire it twice.
+            if engine.takeScored() { Haptics.splash(enabled: vm.haptics) }
             if let result = engine.takeResult() { onEnd(result) }
         }
     }
@@ -1368,6 +1378,13 @@ private final class TargetEngine: GameEngine {
     var score = 0
     var tapsLeft = targetTaps
     private var overAt: CGFloat = -1
+    /// Raised on the frame a duckling lands, and taken by the view for a buzz.
+    private var scored = false
+
+    func takeScored() -> Bool {
+        defer { scored = false }
+        return scored
+    }
 
     func splash(at: CGPoint) {
         splashes.append(TargetSplash(at: at, born: time))
@@ -1379,9 +1396,8 @@ private final class TargetEngine: GameEngine {
 
     private func settled() -> Bool { sqrt(vel.dx * vel.dx + vel.dy * vel.dy) <= targetStill }
 
-    /// One frame. Returns true on the frame the duckling reaches the pad.
-    @discardableResult
-    func step(dt: CGFloat) -> Bool {
+    /// One frame.
+    func step(dt: CGFloat) {
         splashes.removeAll { time - $0.born > 0.9 }
 
         let keep = min(max(1 - targetFriction * dt, 0), 1)
@@ -1394,7 +1410,6 @@ private final class TargetEngine: GameEngine {
         if p.y > targetBottom { p.y = targetBottom; vel.dy = -vel.dy * 0.55 }
         pos = p
 
-        var scored = false
         // Scored on arrival, not on the tap: what counts is where the duckling
         // actually got to, and a glide that passes through the pad counts.
         if span(pos, target, aspect) < targetRadius {
@@ -1423,7 +1438,6 @@ private final class TargetEngine: GameEngine {
             finish(score)
             overAt = -1
         }
-        return scored
     }
 }
 
