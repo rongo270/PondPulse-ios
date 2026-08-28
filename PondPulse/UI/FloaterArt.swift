@@ -10,7 +10,7 @@
 
 import SwiftUI
 
-nonisolated private let ink = Color(hex: 0x17303F)
+nonisolated let ink = Color(hex: 0x17303F)
 
 extension Color {
     nonisolated private var rgba: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
@@ -30,21 +30,25 @@ extension Color {
     }
 }
 
-nonisolated private func bodyTint(_ palette: PondPalette, _ color: DuckColor?, _ natural: Color) -> Color {
+nonisolated func bodyTint(_ palette: PondPalette, _ color: DuckColor?, _ natural: Color) -> Color {
     color == nil ? natural : palette.duckTint(color)
 }
 
 // MARK: - Small path helpers
+//
+// Internal, not file-private: FloaterArtMore.swift draws its twenty friends and
+// eight pads with exactly this vocabulary, the way Android's FloaterArtMore.kt
+// shares FloaterArt.kt's helpers.
 
-nonisolated private func oval(_ topLeft: CGPoint, _ size: CGSize) -> Path {
+nonisolated func oval(_ topLeft: CGPoint, _ size: CGSize) -> Path {
     Path(ellipseIn: CGRect(origin: topLeft, size: size))
 }
 
-nonisolated private func circle(_ center: CGPoint, _ radius: CGFloat) -> Path {
+nonisolated func circle(_ center: CGPoint, _ radius: CGFloat) -> Path {
     Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
 }
 
-nonisolated private func polygon(_ points: [CGPoint]) -> Path {
+nonisolated func polygon(_ points: [CGPoint]) -> Path {
     var p = Path()
     p.move(to: points[0])
     for pt in points.dropFirst() { p.addLine(to: pt) }
@@ -52,7 +56,7 @@ nonisolated private func polygon(_ points: [CGPoint]) -> Path {
     return p
 }
 
-nonisolated private func line(_ from: CGPoint, _ to: CGPoint) -> Path {
+nonisolated func line(_ from: CGPoint, _ to: CGPoint) -> Path {
     var p = Path()
     p.move(to: from)
     p.addLine(to: to)
@@ -61,7 +65,7 @@ nonisolated private func line(_ from: CGPoint, _ to: CGPoint) -> Path {
 
 /// Compose-style drawArc: an arc of the ellipse inscribed in the rect,
 /// degrees, 0° at 3 o'clock, positive sweep clockwise on screen.
-nonisolated private func ovalArc(
+nonisolated func ovalArc(
     _ topLeft: CGPoint, _ size: CGSize, start: Double, sweep: Double, useCenter: Bool
 ) -> Path {
     var unit = Path()
@@ -80,11 +84,11 @@ nonisolated private func ovalArc(
     return unit.applying(transform)
 }
 
-nonisolated private func stroke(_ width: CGFloat, cap: CGLineCap = .butt) -> StrokeStyle {
+nonisolated func stroke(_ width: CGFloat, cap: CGLineCap = .butt) -> StrokeStyle {
     StrokeStyle(lineWidth: width, lineCap: cap)
 }
 
-nonisolated private func rotated(_ ctx: GraphicsContext, degrees: CGFloat, pivot: CGPoint) -> GraphicsContext {
+nonisolated func rotated(_ ctx: GraphicsContext, degrees: CGFloat, pivot: CGPoint) -> GraphicsContext {
     var c = ctx
     c.translateBy(x: pivot.x, y: pivot.y)
     c.rotate(by: .degrees(degrees))

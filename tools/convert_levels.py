@@ -159,7 +159,11 @@ def emit_toughness():
     plans ahead wins anyway. Lower is harder. This, not par, is what orders the
     ponds inside a stage and what grades a stage's difficulty chip."""
     text = open(f"{SRC}/Levels.kt").read()
-    block = re.search(r"private val toughness = mapOf<String, Double>\((.*?)\n    \)", text, re.S).group(1)
+    # Android renamed this map `toughness` -> `feel` (2026-08); accept either.
+    m = re.search(r"private val (?:toughness|feel) = mapOf<String, Double>\((.*?)\n    \)", text, re.S)
+    if m is None:
+        raise SystemExit("convert_levels: no toughness/feel map found in Levels.kt")
+    block = m.group(1)
     entries = re.findall(r'"([\d-]+)"\s+to\s+([\d.]+)', block)
 
     lines = [

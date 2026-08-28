@@ -99,9 +99,12 @@ struct LevelDraft {
 
     func build(pars: [String: Int]) -> LevelSpec {
         guard let par = pars[id] else { fatalError("no par recorded for level \(id)") }
+        // A guided pond hands out so many splashes that running out is not a
+        // thing that happens - see `Levels.guided`.
+        let room = Levels.isGuided(id) ? Levels.guidedSlack : slack
         return LevelParser.parse(
             id: id, rows: rows, par: par,
-            maxSplashes: LevelParser.budget(par, slack), tip: tip
+            maxSplashes: LevelParser.budget(par, room), tip: tip
         )
     }
 }
@@ -146,21 +149,61 @@ enum Levels {
     /// Measured `bluff@2` for a pond, or nil if it has never been measured.
     static func toughnessOf(_ levelId: String) -> Double? { LevelMaps.toughness[levelId] }
 
-    /// Play order inside one stage: tips first, then by par, with measured
-    /// toughness breaking ties so the sharpest pond of a given length is always
-    /// the last one you meet. A stage with no measurements keeps plain par order
-    /// rather than inventing one.
+    /// The six teaching ponds, in the order their rules build on each other:
+    /// push, then what blocks a push, then that a docked duckling is furniture,
+    /// then that "away" includes the diagonals, then turtles, then colours.
+    ///
+    /// Each was searched for on one condition the old tutorial failed - that the
+    /// rule it teaches actually decides its answer.
+    static let tutorial = ["1-1", "1-2", "1-3", "1-4", "1-5", "1-6"]
+
+    /// The five ponds that hold the player's hand: the ring that a hint would
+    /// draw is on the board from the first frame and re-solved after every
+    /// splash, and the pond refuses to present itself as a loss.
+    ///
+    /// Five, not six. The colour pond is the graduation: it still carries its
+    /// tip, but the player reads it themselves. A tutorial that never lets go
+    /// has not taught anything.
+    static let guided = Set(tutorial.prefix(5))
+
+    /// A guided pond hands out so many splashes that running out is not a thing
+    /// that happens. Nobody should meet "you lost" before they have been told
+    /// what the droplets even are - that lesson has its own pond (`1-7`), and
+    /// arriving there having never been punished by the counter is the point.
+    /// The droplet row is hidden on these ponds for the same reason.
+    static let guidedSlack = 24
+
+    /// Whether `id` is one of the guided teaching ponds. See `guided`.
+    static func isGuided(_ id: String) -> Bool { guided.contains(id) }
+
+    /// Levels inside a stage are played easiest first, ordered by measured
+    /// `feel`, with the teaching ponds pinned to the very front in their
+    /// authored order and any other tip level pinned behind them, so a lesson
+    /// always lands before the mechanic shows up in anger.
+    ///
+    /// Par is deliberately **not** a sort key any more. It used to be the
+    /// primary one, which is what made stage after stage end softer than it
+    /// began: par is how *long* an answer is, and a long answer is a slow
+    /// answer, not a hard one - measured, par 2 ponds are won on instinct 99% of
+    /// the time and par 5 ponds 27%, but hold the real factors out and most of
+    /// that gap closes.
     private static func ramped(_ levels: [LevelSpec]) -> [LevelSpec] {
         let measured = levels.allSatisfy { LevelMaps.toughness[$0.id] != nil }
         return levels.enumerated().sorted { a, b in
             let (ia, x) = a, (ib, y) = b
-            // `tip == nil` sorts after a tip level, matching Kotlin's compareBy
-            // over the boolean.
-            if (x.tip == nil) != (y.tip == nil) { return y.tip == nil }
-            if x.par != y.par { return x.par < y.par }
             if measured {
-                let tx = LevelMaps.toughness[x.id]!, ty = LevelMaps.toughness[y.id]!
-                if tx != ty { return -tx < -ty }
+                // Teaching ponds first, in the order they teach.
+                let ta = tutorial.firstIndex(of: x.id) ?? Int.max
+                let tb = tutorial.firstIndex(of: y.id) ?? Int.max
+                if ta != tb { return ta < tb }
+                // `tip == nil` sorts after a tip level, matching Kotlin's
+                // compareBy over the boolean.
+                if (x.tip == nil) != (y.tip == nil) { return y.tip == nil }
+                let fx = LevelMaps.toughness[x.id]!, fy = LevelMaps.toughness[y.id]!
+                if fx != fy { return -fx < -fy }
+            } else {
+                if (x.tip == nil) != (y.tip == nil) { return y.tip == nil }
+                if x.par != y.par { return x.par < y.par }
             }
             // Kotlin's sortedWith is stable; keep the original order on full ties.
             return ia < ib
@@ -172,41 +215,41 @@ enum Levels {
     /// Level ids don't follow play order: they are stable save keys that stay
     /// with their maps.
     private static let stages: [[LevelSpec]] = [
-        // Stages 1-4 · the teaching ponds: one new mechanic each, all easy.
-        ramped(build(LevelMaps.pack1)),
-        ramped(build(LevelMaps.pack2)),
-        ramped(build(LevelMaps.pack22)),
-        ramped(build(LevelMaps.pack4)),
-        // Stages 5-8 · easy practice, no new rules.
-        ramped(build(LevelMaps.pack24)),
-        ramped(build(LevelMaps.pack27)),
-        ramped(build(LevelMaps.pack26)),
-        ramped(build(LevelMaps.pack11)),
-        // Stages 9-17 · medium.
-        ramped(build(LevelMaps.pack5)),
-        ramped(build(LevelMaps.pack15)),
-        ramped(build(LevelMaps.pack12)),
-        ramped(build(LevelMaps.pack28)),
-        ramped(build(LevelMaps.pack21)),
-        ramped(build(LevelMaps.pack13)),
-        ramped(build(LevelMaps.pack30)),
-        ramped(build(LevelMaps.pack6)),
-        ramped(build(LevelMaps.pack23)),
-        // Stages 18-20 · hard, still inside the free 300.
-        ramped(build(LevelMaps.pack7)),
-        ramped(build(LevelMaps.pack16)),
-        ramped(build(LevelMaps.pack14)),
+        // Stage 1 · six teaching ponds, one rule each, then the climb starts.
+        ramped(build(LevelMaps.pack1)),   // median feel 0.880
+        // Stages 2-5 · the climb. Nothing here is free any more.
+        ramped(build(LevelMaps.pack22)),  // median feel 0.540
+        ramped(build(LevelMaps.pack2)),   // median feel 0.453
+        ramped(build(LevelMaps.pack4)),   // median feel 0.350
+        ramped(build(LevelMaps.pack24)),  // median feel 0.280
+        // Stages 6-14 · medium: a plan is needed, one slip is survivable.
+        ramped(build(LevelMaps.pack27)),  // median feel 0.277
+        ramped(build(LevelMaps.pack23)),  // median feel 0.243
+        ramped(build(LevelMaps.pack26)),  // median feel 0.203
+        ramped(build(LevelMaps.pack11)),  // median feel 0.167
+        ramped(build(LevelMaps.pack7)),   // median feel 0.160
+        ramped(build(LevelMaps.pack17)),  // median feel 0.153
+        ramped(build(LevelMaps.pack3)),   // median feel 0.110
+        ramped(build(LevelMaps.pack15)),  // median feel 0.110
+        ramped(build(LevelMaps.pack14)),  // median feel 0.103
+        // Stages 15-20 · hard, still inside the free 300.
+        ramped(build(LevelMaps.pack12)),  // median feel 0.093
+        ramped(build(LevelMaps.pack13)),  // median feel 0.073
+        ramped(build(LevelMaps.pack21)),  // median feel 0.063
+        ramped(build(LevelMaps.pack5)),   // median feel 0.047
+        ramped(build(LevelMaps.pack30)),  // median feel 0.040
+        ramped(build(LevelMaps.pack20)),  // median feel 0.013
         // Stages 21-30 · levels 301-450, behind the premium upgrade.
-        ramped(build(LevelMaps.pack8)),
-        ramped(build(LevelMaps.pack17)),
-        ramped(build(LevelMaps.pack3)),
-        ramped(build(LevelMaps.pack9)),
-        ramped(build(LevelMaps.pack18)),
-        ramped(build(LevelMaps.pack25)),
-        ramped(build(LevelMaps.pack20)),
-        ramped(build(LevelMaps.pack29)),
-        ramped(build(LevelMaps.pack10)),
-        ramped(build(LevelMaps.pack19)),
+        ramped(build(LevelMaps.pack25)),  // median feel 0.013
+        ramped(build(LevelMaps.pack19)),  // median feel 0.007
+        ramped(build(LevelMaps.pack6)),   // median feel 0.003
+        ramped(build(LevelMaps.pack16)),  // median feel 0.003
+        ramped(build(LevelMaps.pack18)),  // median feel 0.003
+        ramped(build(LevelMaps.pack28)),  // median feel 0.003
+        ramped(build(LevelMaps.pack29)),  // median feel 0.003
+        ramped(build(LevelMaps.pack8)),   // median feel 0.000
+        ramped(build(LevelMaps.pack9)),   // median feel 0.000
+        ramped(build(LevelMaps.pack10)),  // median feel 0.000
     ]
 
     /// The numbered levels, in play order. Bonus ponds are deliberately absent.

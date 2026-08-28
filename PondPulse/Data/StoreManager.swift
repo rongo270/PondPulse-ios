@@ -3,9 +3,13 @@
 //  PondPulse
 //
 //  StoreKit 2 wiring for the shop. Product ids are identical to the Android
-//  Play Billing ids ("premium", "hints_50", "theme_sakura", ...) so the two
-//  stores stay in sync - create them as one non-consumable per cosmetic, one
-//  consumable for the hint pack, in App Store Connect before release.
+//  Play Billing ids so the two stores stay in sync.
+//
+//  Only five things in PondPulse ever charge real money: the premium upgrade
+//  (one non-consumable), the 50-hint pack and the three coin packs (four
+//  consumables). Every cosmetic is bought with coins now and is not a store
+//  product at all - see `CoinBank`. Create exactly these five in App Store
+//  Connect; the twenty cosmetic IAPs the shop used to sell are retired.
 //
 //  For local testing, select PondPulse/Products.storekit as the scheme's
 //  StoreKit configuration (the shared scheme already does).
@@ -20,12 +24,10 @@ import StoreKit
 @MainActor
 final class StoreManager {
 
-    /// Every id that can be bought: premium, the hint pack, and each paid cosmetic.
+    /// Every id that can be bought with money: premium, the hint pack, the
+    /// three coin packs. Cosmetics are coin purchases and never appear here.
     static var allProductIds: [String] {
-        [Catalog.premiumId, Catalog.hintsId]
-            + Catalog.themes.compactMap { $0.unlock.price != nil ? Catalog.themeProductId($0.id) : nil }
-            + Catalog.skins.compactMap { $0.unlock.price != nil ? Catalog.skinProductId($0.id) : nil }
-            + Catalog.pads.compactMap { $0.unlock.price != nil ? Catalog.padProductId($0.id) : nil }
+        [Catalog.premiumId, Catalog.hintsId] + Catalog.coinPackIds
     }
 
     /// A verified non-consumable entitlement appeared (purchase, restore, or launch sync).
@@ -34,6 +36,8 @@ final class StoreManager {
     var onRevoked: ((String) -> Void)?
     /// A verified hint-pack purchase was credited (already de-duplicated).
     var onHintsPurchased: ((Int) -> Void)?
+    /// A verified coin-pack purchase was credited (already de-duplicated).
+    var onCoinsPurchased: ((Int) -> Void)?
 
     private(set) var products: [String: Product] = [:]
     /// True when the product list could not be fetched (no network / products not set up yet).
@@ -41,10 +45,21 @@ final class StoreManager {
 
     /// Consumable transactions already credited, so a re-delivered transaction
     /// (unfinished at crash, Ask to Buy approval, ...) never double-credits.
+    /// One ledger for hints and coins alike - a transaction id is unique across
+    /// products, and two ledgers would only be two things to keep in step.
     private let handledKey = "handled_hint_transactions"
-    private var handledHintTransactions: Set<String> {
+    private var handledConsumables: Set<String> {
         get { Set(UserDefaults.standard.stringArray(forKey: handledKey) ?? []) }
         set { UserDefaults.standard.set(Array(newValue).sorted(), forKey: handledKey) }
+    }
+
+    /// Credits one consumable exactly once, whatever redelivers it.
+    private func creditOnce(_ transaction: Transaction, _ credit: () -> Void) {
+        guard transaction.revocationDate == nil else { return }
+        let key = String(transaction.id)
+        guard !handledConsumables.contains(key) else { return }
+        handledConsumables.insert(key)
+        credit()
     }
 
     private var updatesTask: Task<Void, Never>?
@@ -111,13 +126,9 @@ final class StoreManager {
 
     private func process(_ transaction: Transaction, finish: Bool) async {
         if transaction.productID == Catalog.hintsId {
-            if transaction.revocationDate == nil {
-                let key = String(transaction.id)
-                if !handledHintTransactions.contains(key) {
-                    handledHintTransactions.insert(key)
-                    onHintsPurchased?(Catalog.hintsPerPack)
-                }
-            }
+            creditOnce(transaction) { onHintsPurchased?(Catalog.hintsPerPack) }
+        } else if let coins = Catalog.coinsInPack(transaction.productID) {
+            creditOnce(transaction) { onCoinsPurchased?(coins) }
         } else if transaction.revocationDate == nil {
             onEntitled?(transaction.productID)
         } else {

@@ -8,18 +8,49 @@
 //
 
 import Combine
+import CoreGraphics
 import SwiftUI
+
+/// The three things the shop sells, each of which owns a page.
+enum Shelf: Hashable {
+    case friends, pads, themes
+}
 
 enum Screen: Equatable {
     case home
     /// The gallery of packs.
     case packs
-    /// One pack's ponds.
-    case packLevels(packId: String)
+    /// One pack's ponds. `focusLevelId`, when set, is the pond to open the pager
+    /// on - set when leaving for a level, so backing out of level 5 returns to
+    /// the page level 5 is on rather than to wherever the player's progress has
+    /// since reached.
+    case packLevels(packId: String, focusLevelId: String? = nil)
     case game(levelId: String)
     case settings
     case shop
     case rush
+
+    /// One shop shelf on its own page, reached from the shop's "Show all".
+    case shopShelf(Shelf)
+
+    /// Today's one pond, the same for everybody, played for a streak.
+    case daily
+
+    /// "My Pond": the full-screen pond where the friends you own actually live.
+    ///
+    /// It absorbed the old Collection screen, which showed the same friends as a
+    /// scrolling roster with a small pond glued to the top. Two screens about the
+    /// same thing meant the pond was always the decorative one; now the pond is
+    /// the screen and the roster is a panel inside it.
+    case pond
+
+    /// One of the pond's four games, played on its own.
+    case pondGame(gameId: String)
+
+    /// Arranging the pond: the shelf of decorations, and the pond you drag them
+    /// onto. Its own screen rather than a panel over My Pond, because a panel
+    /// covers the half of the pond you are trying to place something on.
+    case decorate
 }
 
 @MainActor
@@ -40,6 +71,34 @@ final class AppViewModel: ObservableObject {
     /// In-app language override; nil follows the device language.
     @Published private(set) var languageOverride: Language?
 
+    /// Developer tools: the level skipper in the pond. Only settable from a
+    /// debug build, so it is always false in anything that reaches a player.
+    @Published private(set) var debugTools: Bool
+
+    /// Testing only, and dead while `FreeMode.enabled` is false - which it is on
+    /// iOS. Kept so the two view models stay the same shape.
+    @Published private(set) var unlockAllFlag: Bool
+
+    // Coins ------------------------------------------------------------------
+    @Published private(set) var coinsGranted: Int
+    @Published private(set) var coinsSpent: Int
+
+    // The pond ---------------------------------------------------------------
+    @Published private(set) var pondWeather: String
+    @Published private(set) var pondSlots: Int
+    @Published private(set) var pondFriends: [String]
+    @Published private(set) var decorSpots: [String: CGPoint]
+    @Published private(set) var decorStored: Set<String>
+    @Published private(set) var miniBests: [String: Int]
+    @Published private(set) var pondWeekStamp: Int
+    @Published private(set) var pondWeekTotal: Int
+
+    // The daily pond ---------------------------------------------------------
+    @Published private(set) var dailyLastDay: Int
+    @Published private(set) var dailyStreakStored: Int
+    @Published private(set) var dailyBestStreak: Int
+    @Published private(set) var dailyTotal: Int
+
     /// App Store localized prices by product id; Catalog's display prices are
     /// the fallback until the store answers (or when it can't).
     @Published private(set) var prices: [String: String] = [:]
@@ -59,41 +118,72 @@ final class AppViewModel: ObservableObject {
         hintsLeft = store.hintsLeft
         hintedLevels = store.hintedLevels
         languageOverride = store.language
+        debugTools = store.debugTools
+        unlockAllFlag = store.unlockAll
+        coinsGranted = store.coinsGranted
+        coinsSpent = store.coinsSpent
+        pondWeather = store.pondWeather
+        pondSlots = store.pondSlots
+        pondFriends = store.pondFriends
+        decorSpots = store.decorSpots
+        decorStored = store.decorStored
+        miniBests = store.miniBests
+        pondWeekStamp = store.pondWeek
+        pondWeekTotal = store.pondWeekEarned
+        dailyLastDay = store.dailyLastDay
+        dailyStreakStored = store.dailyStreak
+        dailyBestStreak = store.dailyBestStreak
+        dailyTotal = store.dailyTotal
         applyDebugLaunchOverrides()
 
         // Verified App Store outcomes flow back into the persisted state.
         storeManager.onEntitled = { [weak self] productId in self?.grant(productId) }
         storeManager.onRevoked = { [weak self] productId in self?.revoke(productId) }
         storeManager.onHintsPurchased = { [weak self] count in self?.creditHints(count) }
+        storeManager.onCoinsPurchased = { [weak self] amount in self?.creditCoins(amount) }
         Task { [weak self] in
             await self?.storeManager.load()
             self?.prices = self?.storeManager.displayPrices ?? [:]
         }
     }
 
-    /// DEBUG-only: jump straight into a level (`PP_START_LEVEL=<n>`), one pack's
-    /// ponds (`PP_START_PACK=pack3`), or a
-    /// screen (`PP_START_SCREEN=packs|shop|rush|settings`), passed via
-    /// `SIMCTL_CHILD_*` - mirrors linequest's LQ_START_LEVEL. Never affects
-    /// normal launches.
+    /// DEBUG-only launch overrides, the twin of Android's `pp_*` intent extras:
+    /// `PP_START_LEVEL=<n>` jumps into a level, `PP_START_PACK=pack3` opens one
+    /// pack's ponds, `PP_START_SCREEN=packs|shop|rush|daily|pond|decorate|settings`
+    /// opens a screen, `PP_START_GAME=chain|herd|seek|target` opens a mini game,
+    /// `PP_START_BONUS=b-1` opens a golden pond, and `PP_PREMIUM=1` grants
+    /// premium in memory. Passed via `SIMCTL_CHILD_*`; never affects a normal
+    /// launch, and never persisted.
     private func applyDebugLaunchOverrides() {
         #if DEBUG
         let env = ProcessInfo.processInfo.environment
-        // `PP_PREMIUM=1` grants premium in memory only (never persisted), so
-        // premium flows can be inspected without a StoreKit configuration.
         if env["PP_PREMIUM"] != nil {
             owned.insert(Catalog.premiumId)
+        }
+        if env["PP_COINS"] != nil {
+            // In memory only: a balance to shop with, without a StoreKit sheet.
+            coinsGranted += Int(env["PP_COINS"] ?? "") ?? 5000
         }
         if let raw = env["PP_START_LEVEL"], let n = Int(raw), (1...Levels.all.count).contains(n) {
             backStack = [.home, .game(levelId: Levels.all[n - 1].id)]
         } else if let packId = env["PP_START_PACK"],
                   Levels.packs.contains(where: { $0.id == packId }) {
             backStack = [.home, .packs, .packLevels(packId: packId)]
+        } else if let id = env["PP_START_BONUS"],
+                  Levels.bonusPonds.contains(where: { $0.id == id }) {
+            backStack = [.home, .game(levelId: id)]
+        } else if let id = env["PP_START_GAME"], PondCatalog.gameById(id) != nil {
+            backStack = [.home, .pond, .pondGame(gameId: id)]
         } else if let screen = env["PP_START_SCREEN"] {
             switch screen {
             case "packs": backStack = [.home, .packs]
             case "shop": backStack = [.home, .shop]
             case "rush": backStack = [.home, .rush]
+            case "daily": backStack = [.home, .daily]
+            // "collection" still works: it was this screen's old name, and the
+            // screenshot scripts that use it predate the pond absorbing it.
+            case "pond", "collection": backStack = [.home, .pond]
+            case "decorate": backStack = [.home, .pond, .decorate]
             case "settings": backStack = [.home, .settings]
             default: break
             }
@@ -111,6 +201,19 @@ final class AppViewModel: ObservableObject {
 
     var strings: Strings { Strings(language: language) }
 
+    /// Everything the player owns, with the free-mode grants folded in.
+    ///
+    /// Neither fold is ever written back to storage. Both are inert on iOS,
+    /// where `FreeMode.enabled` is false - they exist so the ownership rules
+    /// read the same on both platforms.
+    var effectiveOwned: Set<String> {
+        if unlockAllFlag {
+            return owned.union(Self.everyProductId).union([FreeMode.unlockAllToken])
+        }
+        if FreeMode.enabled { return owned.union([Catalog.premiumId]) }
+        return owned
+    }
+
     // MARK: - Navigation
 
     var current: Screen { backStack.last ?? .home }
@@ -123,11 +226,34 @@ final class AppViewModel: ObservableObject {
         backStack[backStack.count - 1] = screen
     }
 
+    /// Drops every screen and stands the player on the pond's front door.
+    ///
+    /// A reset leaves the screens underneath describing a game that no longer
+    /// exists - a pack page of solved ponds, a shop shelf of owned friends - so
+    /// walking back through them afterwards is walking through ghosts.
+    func goHome() {
+        backStack = [.home]
+    }
+
     @discardableResult
     func back() -> Bool {
         guard backStack.count > 1 else { return false }
         backStack.removeLast()
         return true
+    }
+
+    /// Leave a pond, pointing the pack page underneath at the pond actually
+    /// being left. Without this the "next level" chain and the debug skipper
+    /// would still return to whichever pond the player first opened, which for a
+    /// long chain can be a different page entirely.
+    func leaveLevel(_ levelId: String) {
+        let below = backStack.count - 2
+        if below >= 0, case .packLevels(let packId, _) = backStack[below],
+           !Levels.isBonus(levelId), Levels.indexOf(levelId) >= 0,
+           Levels.packOf(levelId).id == packId {
+            backStack[below] = .packLevels(packId: packId, focusLevelId: levelId)
+        }
+        back()
     }
 
     // MARK: - Level progression (identical rules to Android)
@@ -150,16 +276,23 @@ final class AppViewModel: ObservableObject {
     /// i.e. you clear the pond in order. There is no star-count gate. Premium
     /// owners skip even the ordering: every level is open outright, any order.
     func isUnlocked(_ levelId: String) -> Bool {
+        // Testing only: "Unlock everything" opens the golden ponds too.
+        if unlockAllFlag { return true }
         // Bonus ponds have their own gate: clear the run of ponds they close.
         if Levels.isBonus(levelId) {
             let pack = Levels.packOf(levelId)
-            return isBonusUnlocked(pack, pack.bonuses.first { $0.level.id == levelId }!)
+            guard let bonus = pack.bonuses.first(where: { $0.level.id == levelId }) else { return false }
+            return isBonusUnlocked(pack, bonus)
         }
-        if isPremium { return true }
-        if isPremiumLevel(levelId) { return false }
+        // The premium upgrade opens every pond outright - but not in a
+        // closed-testing build, where premium is granted to everyone and that
+        // would quietly throw the ordering away.
+        if isPremium && !FreeMode.enabled { return true }
+        if !isPremium && isPremiumLevel(levelId) { return false }
         let index = Levels.indexOf(levelId)
-        let firstUnsolved = Levels.all.firstIndex { (stars[$0.id] ?? 0) == 0 }
-        return firstUnsolved == nil || index <= firstUnsolved!
+        guard let firstUnsolved = Levels.all.firstIndex(where: { (stars[$0.id] ?? 0) == 0 })
+        else { return true }
+        return index <= firstUnsolved
     }
 
     func globalLevelNumber(_ levelId: String) -> Int { Levels.indexOf(levelId) + 1 }
@@ -192,12 +325,9 @@ final class AppViewModel: ObservableObject {
 
     func stageStars(_ stage: PackStage) -> Int { stage.levels.reduce(0) { $0 + (stars[$1.id] ?? 0) } }
 
-    /// Which page of a pack to open on: the first stage still holding an unsolved
-    /// pond, or the last one once the whole pack is cleared. Landing anywhere else
-    /// would make the player swipe to find their own place.
-    func currentStageIndex(_ pack: Pack) -> Int {
-        pack.stages.firstIndex { stage in stage.levels.contains { (stars[$0.id] ?? 0) == 0 } }
-            ?? pack.stages.count - 1
+    /// Which page of a pack to open on. See `stageIndexFor`.
+    func currentStageIndex(_ pack: Pack, focusLevelId: String? = nil) -> Int {
+        stageIndexFor(pack: pack, starMap: stars, focusLevelId: focusLevelId)
     }
 
     /// Ponds cleared overall, for the header on the packs screen.
@@ -211,7 +341,7 @@ final class AppViewModel: ObservableObject {
     /// A golden pond opens once every pond up to it in the pack has a star. It is
     /// never in the way: skipping it costs nothing but the reward.
     func isBonusUnlocked(_ pack: Pack, _ bonus: BonusPond) -> Bool {
-        pack.levels.prefix(bonus.opensAfter).allSatisfy { (stars[$0.id] ?? 0) > 0 }
+        unlockAllFlag || pack.levels.prefix(bonus.opensAfter).allSatisfy { (stars[$0.id] ?? 0) > 0 }
     }
 
     /// The golden pond a player has just opened but not yet played, if any.
@@ -219,46 +349,254 @@ final class AppViewModel: ObservableObject {
         pack.bonuses.first { (stars[$0.level.id] ?? 0) == 0 && isBonusUnlocked(pack, $0) }
     }
 
+    /// The golden pond that clearing `levelId` has just opened, if any.
+    func bonusOpenedBy(_ levelId: String, firstClear: Bool) -> BonusPond? {
+        PondPulse.bonusOpenedBy(levelId: levelId, firstClear: firstClear, starMap: stars) {
+            [self] pack, bonus, _ in isBonusUnlocked(pack, bonus)
+        }
+    }
+
+    // MARK: - Ownership
+
     /// Whether a shop item is usable right now (free, earned, or bought).
     func isOwned(_ unlock: Unlock, productId: String) -> Bool {
         if Catalog.cosmeticsUnlocked { return true }
+        let ownedIds = effectiveOwned
+        if ownedIds.contains(FreeMode.unlockAllToken) { return true }
         switch unlock {
         case .free: return true
         case .levelReward(let level): return highestSolvedLevel() >= level
         case .bonusReward(let count): return bonusPondsCleared() >= count
-        case .premium: return isPremium
-        case .paid: return owned.contains(productId)
+        case .streakReward(let days): return dailyBestStreak >= days
+        case .premium: return ownedIds.contains(Catalog.premiumId)
+        // Bought, or won from the golden pond that also hands it out. Two doors
+        // to the same item: the coin price is what it costs someone who does not
+        // play the golden ponds, and clearing them is what it costs someone who
+        // would rather not spend.
+        case .coins(_, let bonusCount):
+            if ownedIds.contains(productId) { return true }
+            if let bonusCount { return bonusPondsCleared() >= bonusCount }
+            return false
         }
     }
+
+    /// Whether a decoration is the player's - bought, or paid out by a golden
+    /// pond. The Decorate tray asks this instead of looking in the owned set on
+    /// its own, which is all it used to do.
+    func isDecorOwned(_ decor: PondCatalog.Decor) -> Bool {
+        if Catalog.cosmeticsUnlocked { return true }
+        let ownedIds = effectiveOwned
+        if ownedIds.contains(FreeMode.unlockAllToken) { return true }
+        if ownedIds.contains(PondCatalog.decorProductId(decor.id)) { return true }
+        if let count = decor.bonusCount { return bonusPondsCleared() >= count }
+        return false
+    }
+
+    /// Whether a sky is the player's. Day is free; the rest are coin purchases.
+    func isWeatherOwned(_ weather: PondCatalog.Weather) -> Bool {
+        if weather.price == 0 { return true }
+        if Catalog.cosmeticsUnlocked { return true }
+        let ownedIds = effectiveOwned
+        return ownedIds.contains(FreeMode.unlockAllToken)
+            || ownedIds.contains(PondCatalog.weatherProductId(weather.id))
+    }
+
+    // MARK: - Coins
+
+    /// The two halves of the star ledger, which pay at different rates.
+    private static let campaignIds = Levels.all.map(\.id)
+    private static let goldenIds = Levels.bonusPonds.map(\.id)
+
+    /// Every coin progress has earned, recomputed rather than banked - see
+    /// `CoinBank`. Nothing writes this; replaying a cleared pond recomputes to
+    /// the same number, which is what makes coins unfarmable.
+    var derivedCoins: Int {
+        CoinBank.derived(
+            campaignIds: Self.campaignIds,
+            goldenIds: Self.goldenIds,
+            starsOf: { stars[$0] ?? 0 },
+            dailyClears: dailyTotal,
+            bestStreak: dailyBestStreak,
+            rushBests: rushBests.values
+        )
+    }
+
+    /// What the player can spend right now.
+    var coins: Int {
+        CoinBank.balance(derived: derivedCoins, granted: coinsGranted, spent: coinsSpent)
+    }
+
+    /// What the pond's games have paid out this week. Read as a pair so a stamp
+    /// left over from last week reads as zero rather than as a spent ceiling.
+    var pondEarnedThisWeek: Int {
+        pondWeekStamp == CoinBank.weekOf(epochDay: today()) ? pondWeekTotal : 0
+    }
+
+    func canAfford(_ price: Int) -> Bool { FreeMode.affordable(coins: coins, price: price) }
+
+    /// Buys a shop item with coins. Returns whether the coins were actually
+    /// there - a refused purchase must not equip anything.
+    @discardableResult
+    func buyWithCoins(price: Int, productId: String) -> Bool {
+        guard store.buyWithCoins(derived: derivedCoins, price: price, productId: productId)
+        else { return false }
+        owned = store.owned
+        coinsSpent = store.coinsSpent
+        return true
+    }
+
+    @discardableResult
+    func buyHints(count: Int) -> Bool {
+        guard store.buyHints(derived: derivedCoins, count: count) else { return false }
+        hintsLeft = store.hintsLeft
+        coinsSpent = store.coinsSpent
+        return true
+    }
+
+    @discardableResult
+    func buyPondSlot() -> Bool {
+        guard store.buyPondSlot(derived: derivedCoins) else { return false }
+        pondSlots = store.pondSlots
+        coinsSpent = store.coinsSpent
+        return true
+    }
+
+    // MARK: - The pond
+
+    /// Friends owned before the pond is worth opening.
+    ///
+    /// The pond opens once three friends live there. One friend is a puddle and
+    /// two is a pair; three is the first time the water looks inhabited, which is
+    /// the only reason the screen exists.
+    static let pondMinFriends = 3
+
+    var pondUnlocked: Bool { ownedSkinIds().count >= Self.pondMinFriends }
+
+    /// Every friend the player may put in the water, in catalog order.
+    func ownedSkinIds() -> [String] {
+        Catalog.skins
+            .filter { isOwned($0.unlock, productId: Catalog.skinProductId($0.id)) }
+            .map(\.id)
+    }
+
+    /// Who is actually swimming: the player's picks, minus anything they no
+    /// longer own and anything past the seats they have.
+    ///
+    /// A pond nobody has ever arranged fills itself from the roster, because a
+    /// pond that starts empty until you visit a picker is a pond whose first
+    /// impression is an empty pond. A pond that *has* been arranged does not:
+    /// topping it up used to refill a seat the moment it was emptied, so taking a
+    /// friend out of a full pond instantly put a different one in, and the only
+    /// way to change who was swimming looked like a random shuffle. An empty seat
+    /// is now a seat you emptied.
+    func pondCast() -> [String] {
+        let roster = ownedSkinIds()
+        let kept = Array(pondFriends.filter { roster.contains($0) }.prefix(pondSlots))
+        return kept.isEmpty ? Array(roster.prefix(pondSlots)) : kept
+    }
+
+    func setPondFriends(_ ids: [String]) {
+        store.setPondFriends(ids)
+        pondFriends = ids
+    }
+
+    func setDecorSpot(id: String, at: CGPoint) {
+        store.setDecorSpot(id: id, at: at)
+        decorSpots[id] = at
+    }
+
+    func setDecorStored(id: String, stored: Bool) {
+        store.setDecorStored(id: id, stored: stored)
+        decorStored = store.decorStored
+    }
+
+    func setPondWeather(_ id: String) {
+        store.setPondWeather(id)
+        pondWeather = id
+    }
+
+    /// Banks a mini game run: the best score, and whatever the week's ceiling
+    /// still allows the run to pay. Returns what was actually paid, so the
+    /// results card can say "the week is done" rather than quietly showing a
+    /// zero.
+    @discardableResult
+    func finishMiniGame(gameId: String, score: Int) -> Int {
+        guard let game = PondCatalog.gameById(gameId) else { return 0 }
+        store.recordMiniBest(gameId: gameId, score: score)
+        miniBests = store.miniBests
+        let paid = store.awardPondCoins(
+            week: CoinBank.weekOf(epochDay: today()),
+            want: PondCatalog.coinsFor(game, score: score)
+        )
+        pondWeekStamp = store.pondWeek
+        pondWeekTotal = store.pondWeekEarned
+        coinsGranted = store.coinsGranted
+        return paid
+    }
+
+    // MARK: - The daily pond
+
+    /// Today, as the app reckons days: the device's local calendar date.
+    func today() -> Int { currentEpochDay() }
+
+    /// The streak as it actually stands today.
+    var dailyStreak: Int {
+        liveDailyStreak(lastDay: dailyLastDay, epochDay: today(), storedStreak: dailyStreakStored)
+    }
+
+    /// Whether today's pond has already been cleared.
+    var dailyDoneToday: Bool { dailyLastDay == today() }
+
+    /// Today's pond. Everybody with the same date gets the same one, and it is
+    /// drawn from the free 300 so the daily is never a locked door - a premium
+    /// upgrade buys more levels, not a different daily.
+    func dailySpec(_ epochDay: Int? = nil) -> LevelSpec {
+        let day = epochDay ?? today()
+        let pool = Array(Levels.all.prefix(Catalog.premiumFromLevel - 1))
+        return pool[dailyPondIndex(epochDay: day, poolSize: pool.count)]
+    }
+
+    /// Banks a Daily Pond clear. Returns the payout only when the day actually
+    /// paid out, so replaying today's pond stays quiet.
+    @discardableResult
+    func recordDailyWin(_ epochDay: Int? = nil) -> ProgressStore.DailyPayout? {
+        let payout = store.recordDailyWin(epochDay: epochDay ?? today())
+        guard payout != nil else { return nil }
+        dailyLastDay = store.dailyLastDay
+        dailyStreakStored = store.dailyStreak
+        dailyBestStreak = store.dailyBestStreak
+        dailyTotal = store.dailyTotal
+        hintsLeft = store.hintsLeft
+        return payout
+    }
+
+    // MARK: - Wins
 
     func recordWin(levelId: String, stars starCount: Int) {
         store.recordResult(levelId: levelId, stars: starCount)
         stars[levelId] = max(stars[levelId] ?? 0, starCount)
     }
 
-    /// The golden pond whose clear just paid out its hints, if any. The win card
-    /// reads it to decide between "here are your hints" and "lovely splashing";
+    /// The golden pond whose clear just paid out its prize, if any. The win card
+    /// reads it to decide between "here is your prize" and "lovely splashing";
     /// a replay clears it, so the payout is only ever announced once.
-    @Published private(set) var bonusHintsPaidFor: String?
+    @Published private(set) var bonusPrizePaidFor: String?
 
-    /// Banks a bonus pond clear. Only the pond's first ever clear pays out hints.
+    /// Banks a bonus pond clear. Only the pond's first ever clear pays a prize.
     @discardableResult
     func recordBonusWin(levelId: String, stars starCount: Int) -> Bool {
         let granted = store.recordBonusResult(levelId: levelId, stars: starCount)
         stars[levelId] = max(stars[levelId] ?? 0, starCount)
-        if granted {
-            hintsLeft = store.hintsLeft
-            bonusHintsPaidFor = levelId
-        }
+        if granted { bonusPrizePaidFor = levelId }
         return granted
     }
 
     /// Called when a pond is restarted: a replay has to earn its own verdict.
-    func clearBonusPayoutNotice() { bonusHintsPaidFor = nil }
+    func clearBonusPayoutNotice() { bonusPrizePaidFor = nil }
 
     // MARK: - Splash Rush
 
-    /// The level run for one Splash Rush game: a couple of random ponds from
+    /// The level run for one Splash Rush game: a handful of random ponds from
     /// each pack, easy to hard, premium packs only when owned. The play screen
     /// wraps the index if a marathon outruns the list.
     func rushSequence() -> [LevelSpec] {
@@ -289,6 +627,28 @@ final class AppViewModel: ObservableObject {
         languageOverride = language
     }
 
+    func setDebugTools(_ value: Bool) {
+        store.setDebugTools(value)
+        debugTools = value
+    }
+
+    /// Testing only: opens every pond and hands over every unlockable. Dead
+    /// while `FreeMode.enabled` is false, which it is on iOS.
+    func setUnlockAll(_ value: Bool) {
+        store.setUnlockAll(value)
+        unlockAllFlag = store.unlockAll
+    }
+
+    /// The pond `delta` steps along the play order from `levelId`, or nil at
+    /// either end. Ignores locks and premium on purpose: it exists only behind
+    /// `debugTools`, to walk the ramp without replaying it.
+    func debugNeighbour(_ levelId: String, delta: Int) -> LevelSpec? {
+        let at = Levels.indexOf(levelId)
+        guard at >= 0 else { return nil }
+        let to = at + delta
+        return Levels.all.indices.contains(to) ? Levels.all[to] : nil
+    }
+
     func selectTheme(_ id: String) {
         store.setSelectedTheme(id)
         themeId = id
@@ -311,7 +671,9 @@ final class AppViewModel: ObservableObject {
     /// undo or a replay - never solves again from scratch and never costs a
     /// second hint.
     func useHint(levelId: String) {
-        if !hintedLevels.contains(levelId) {
+        // Closed testing: hints cost nothing, so the counter is left alone. The
+        // level is still remembered, so its glow stays free on a replay.
+        if !FreeMode.enabled && !hintedLevels.contains(levelId) {
             store.setHintsLeft(hintsLeft - 1)
             hintsLeft = store.hintsLeft
         }
@@ -328,8 +690,9 @@ final class AppViewModel: ObservableObject {
     }
 
     /// Runs the App Store payment sheet and returns true once the verified
-    /// purchase has been granted, so the caller can equip the item.
-    /// The hint pack is a consumable: it credits hints instead of unlocking.
+    /// purchase has been granted, so the caller can equip the item. The hint
+    /// pack and the coin packs are consumables: they credit hints or coins
+    /// instead of unlocking a product id.
     func purchase(_ productId: String) async -> Bool {
         guard !purchasing else { return false }
         purchasing = true
@@ -367,10 +730,169 @@ final class AppViewModel: ObservableObject {
         hintsLeft = store.hintsLeft
     }
 
+    private func creditCoins(_ amount: Int) {
+        store.grantCoins(amount)
+        coinsGranted = store.coinsGranted
+    }
+
     func resetProgress() {
         store.resetProgress()
         stars = store.stars
         rushBests = store.rushBests
         hintedLevels = store.hintedLevels
+        hintsLeft = store.hintsLeft
+        owned = store.owned
+        themeId = store.selectedTheme
+        skinId = store.selectedSkin
+        padId = store.selectedPad
+        coinsSpent = store.coinsSpent
+        coinsGranted = store.coinsGranted
+        miniBests = store.miniBests
+        pondWeather = store.pondWeather
+        pondSlots = store.pondSlots
+        pondFriends = store.pondFriends
+        decorSpots = store.decorSpots
+        decorStored = store.decorStored
+        pondWeekStamp = store.pondWeek
+        pondWeekTotal = store.pondWeekEarned
+        dailyLastDay = store.dailyLastDay
+        dailyStreakStored = store.dailyStreak
+        dailyBestStreak = store.dailyBestStreak
+        dailyTotal = store.dailyTotal
+        bonusPrizePaidFor = nil
+        goHome()
     }
+
+    /// Every product id the two catalogues between them sell. Only ever used by
+    /// `effectiveOwned` while "Unlock everything" is on.
+    private static let everyProductId: Set<String> = {
+        var out: Set<String> = [Catalog.premiumId]
+        Catalog.themes.forEach { out.insert(Catalog.themeProductId($0.id)) }
+        Catalog.skins.forEach { out.insert(Catalog.skinProductId($0.id)) }
+        Catalog.pads.forEach { out.insert(Catalog.padProductId($0.id)) }
+        PondCatalog.decor.forEach { out.insert(PondCatalog.decorProductId($0.id)) }
+        PondCatalog.weathers.forEach { out.insert(PondCatalog.weatherProductId($0.id)) }
+        return out
+    }()
+}
+
+// MARK: - Free functions
+//
+// Android keeps these outside the view model so its tests can hold them to
+// account without an Android runtime. Same reason here: no SwiftUI, no state.
+
+/// Which pond in the pool is `epochDay`'s daily.
+///
+/// Not a plain hash of the date. A hash into 300 ponds serves the *same* pond
+/// two days running about once a year - rare enough to miss in testing, and
+/// exactly the kind of thing a player on a streak notices and reads as broken.
+///
+/// So the pool is walked instead of sampled. Days are cut into blocks of
+/// `poolSize`, each block gets its own starting point and its own stride chosen
+/// coprime to the pool, and stepping by that stride visits every pond exactly
+/// once before any repeats - a full year of dailies with no pond twice. The one
+/// place two days could still collide is a block boundary, and the nudge below
+/// moves that day on by one.
+///
+/// Everything is fixed integer arithmetic rather than a seeded RNG, so the pond
+/// for a given date can never drift with a toolchain change.
+func dailyPondIndex(epochDay: Int, poolSize: Int) -> Int {
+    precondition(poolSize > 0, "empty daily pool")
+    if poolSize < 3 { return rawDailyIndex(epochDay: epochDay, poolSize: poolSize) }
+    let raw = rawDailyIndex(epochDay: epochDay, poolSize: poolSize)
+    // Only ever true on a block boundary, and yesterday is never itself a
+    // boundary when the pool is 3 or more, so one step is always enough.
+    return raw == rawDailyIndex(epochDay: epochDay - 1, poolSize: poolSize)
+        ? (raw + 1) % poolSize
+        : raw
+}
+
+/// The block walk, before the boundary nudge.
+private func rawDailyIndex(epochDay: Int, poolSize: Int) -> Int {
+    // Pools this small have no room to choose a stride: one pond is always
+    // itself, and two ponds can only alternate. Both are guards for a future
+    // pool that shrinks, never for the shipped 300.
+    if poolSize == 1 { return 0 }
+    if poolSize == 2 { return ((epochDay % 2) + 2) % 2 }
+    let n = poolSize
+    let block = Int((Double(epochDay) / Double(n)).rounded(.down))
+    let step = ((epochDay % n) + n) % n
+    let h = mix64(UInt64(bitPattern: Int64(block)))
+    let start = Int((h >> 20) % UInt64(n))
+    return (start + step * strideFor(n: n, seed: h)) % n
+}
+
+/// A stride that is coprime to `n`, so stepping by it cycles through every one
+/// of the `n` ponds before returning to where it began.
+///
+/// Drawn from 2..n-1, never 1. A stride of 1 walks the pool in order, and then
+/// the boundary nudge - which moves a day on by one - lands exactly on the pond
+/// the next day was already going to use, reintroducing the repeat the whole
+/// scheme exists to prevent. n-1 is always coprime to n, so a candidate always
+/// exists.
+private func strideFor(n: Int, seed: UInt64) -> Int {
+    var s = 2 + Int((seed >> 1) % UInt64(n - 2))
+    while gcd(s, n) != 1 { s = s + 1 >= n ? 2 : s + 1 }
+    return s
+}
+
+private func gcd(_ a: Int, _ b: Int) -> Int { b == 0 ? a : gcd(b, a % b) }
+
+/// SplitMix64's finalizer: cheap, fixed, and well spread in the low bits.
+private func mix64(_ value: UInt64) -> UInt64 {
+    var z = value &* 0x9E37_79B9_7F4A_7C15 &+ 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+    return z ^ (z >> 31)
+}
+
+/// Which page of a pack to open on.
+///
+/// If the player came here from a pond - backing out of it, or "all levels" - it
+/// is that pond's page. Falling through to the progress frontier instead is what
+/// made backing out of level 5 land on the page holding level 35: right for a
+/// cold open from the pack gallery, wrong for someone who was just looking at
+/// level 5.
+///
+/// Otherwise: the first stage still holding an unsolved pond, or the last once
+/// the pack is cleared.
+func stageIndexFor(pack: Pack, starMap: [String: Int], focusLevelId: String? = nil) -> Int {
+    if let focusLevelId {
+        if let at = pack.stages.firstIndex(where: { stage in
+            stage.levels.contains { $0.id == focusLevelId } || stage.bonus.level.id == focusLevelId
+        }) { return at }
+    }
+    return pack.stages.firstIndex { stage in
+        stage.levels.contains { (starMap[$0.id] ?? 0) == 0 }
+    } ?? pack.stages.count - 1
+}
+
+/// The golden pond that clearing `levelId` has just opened, if any.
+///
+/// Two conditions, and both matter:
+///
+///  - `levelId` is the pond the golden one is *gated on* - the last of the run
+///    that opens it, the fifteenth or thirtieth or forty-fifth. Offering instead
+///    the first unplayed golden pond anywhere in the pack is what made a skipped
+///    one follow the player around: walk past the one at level 15, and every win
+///    from 16 onwards went on asking about it, including wins in a later stage.
+///  - this clear was the pond's `firstClear`. Replaying level 15 later is not a
+///    fresh invitation.
+///
+/// A golden pond that is never offered is not lost: it keeps its row in the
+/// level list, where it can be started any time.
+func bonusOpenedBy(
+    levelId: String,
+    firstClear: Bool,
+    starMap: [String: Int],
+    unlocked: (Pack, BonusPond, [String: Int]) -> Bool
+) -> BonusPond? {
+    guard firstClear, !Levels.isBonus(levelId), Levels.indexOf(levelId) >= 0 else { return nil }
+    let pack = Levels.packOf(levelId)
+    guard let bonus = pack.bonuses.first(where: { bonus in
+        bonus.opensAfter >= 1 && bonus.opensAfter <= pack.levels.count
+            && pack.levels[bonus.opensAfter - 1].id == levelId
+    }) else { return nil }
+    guard (starMap[bonus.level.id] ?? 0) == 0 else { return nil }
+    return unlocked(pack, bonus, starMap) ? bonus : nil
 }
