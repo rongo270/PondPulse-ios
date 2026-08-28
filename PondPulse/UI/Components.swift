@@ -250,8 +250,20 @@ struct ProgressTrack: View {
 
 struct RoundIconButton: View {
     @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
     let systemName: String
     let action: () -> Void
+
+    /// What VoiceOver calls it. A back chevron names itself, which is every
+    /// back arrow in the app and matches Android, where each one carries
+    /// `contentDescription = R.string.back`; anything else takes a label from
+    /// the caller, exactly as Android's other icon buttons do.
+    var accessibilityLabel: String?
+
+    private var spokenLabel: String? {
+        if let accessibilityLabel { return accessibilityLabel }
+        return systemName == "chevron.backward" ? strings["back"] : nil
+    }
 
     var body: some View {
         Button(action: action) {
@@ -262,6 +274,23 @@ struct RoundIconButton: View {
                 .background(palette.surface.opacity(0.88), in: Circle())
         }
         .buttonStyle(SquishyButtonStyle())
+        // Applied only when there is one: labelling everything else "" would
+        // take away the name SF Symbols gives an unlabelled icon, and the name
+        // a caller sets from outside.
+        .modifier(OptionalAccessibilityLabel(text: spokenLabel))
+    }
+}
+
+/// `.accessibilityLabel(_:)`, but a no-op when there is nothing to say.
+private struct OptionalAccessibilityLabel: ViewModifier {
+    let text: String?
+
+    func body(content: Content) -> some View {
+        if let text {
+            content.accessibilityLabel(text)
+        } else {
+            content
+        }
     }
 }
 
