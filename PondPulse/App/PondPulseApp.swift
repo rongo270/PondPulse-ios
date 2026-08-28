@@ -48,16 +48,26 @@ struct RootView: View {
             HomeView(vm: vm)
         case .packs:
             PacksView(vm: vm)
-        case .packLevels(let packId):
-            PackLevelsView(vm: vm, packId: packId)
+        case .packLevels(let packId, let focusLevelId):
+            PackLevelsView(vm: vm, packId: packId, focusLevelId: focusLevelId)
         case .game(let levelId):
             GameView(vm: vm, levelId: levelId)
         case .settings:
             SettingsView(vm: vm)
         case .shop:
             ShopView(vm: vm)
+        case .shopShelf(let shelf):
+            ShopShelfView(vm: vm, shelf: shelf)
         case .rush:
             RushView(vm: vm)
+        case .daily:
+            DailyView(vm: vm)
+        case .pond:
+            PondView(vm: vm)
+        case .pondGame(let gameId):
+            PondGameView(vm: vm, gameId: gameId)
+        case .decorate:
+            DecorateView(vm: vm)
         }
     }
 
@@ -67,11 +77,19 @@ struct RootView: View {
         switch screen {
         case .home: "home"
         case .packs: "packs"
-        case .packLevels(let packId): "packlevels-\(packId)"
+        // The focused pond is deliberately not part of the key: it changes when
+        // the player leaves a level, and a new key there would cross-fade the
+        // page they just came back to.
+        case .packLevels(let packId, _): "packlevels-\(packId)"
         case .game(let levelId): "game-\(levelId)"
         case .settings: "settings"
         case .shop: "shop"
+        case .shopShelf(let shelf): "shelf-\(shelf)"
         case .rush: "rush"
+        case .daily: "daily"
+        case .pond: "pond"
+        case .pondGame(let gameId): "pondgame-\(gameId)"
+        case .decorate: "decorate"
         }
     }
 }

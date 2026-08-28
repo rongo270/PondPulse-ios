@@ -23,6 +23,11 @@ struct PackLevelsView: View {
 
     let packId: String
 
+    /// The pond to open the pager on, when the player is backing out of one.
+    /// Without it, leaving level 5 returns to whichever page the player's
+    /// progress has since reached rather than to the page level 5 is on.
+    var focusLevelId: String?
+
     /// Open on the stage the player is actually up to. Set once on appear:
     /// re-seeking mid-browse would yank the pager out from under them.
     @State private var page = 0
@@ -55,7 +60,7 @@ struct PackLevelsView: View {
         .onAppear {
             guard !seeded else { return }
             seeded = true
-            page = vm.currentStageIndex(pack)
+            page = vm.currentStageIndex(pack, focusLevelId: focusLevelId)
         }
     }
 
