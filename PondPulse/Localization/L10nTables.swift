@@ -5613,3 +5613,147 @@ extension L10n {
         "win_title": "全员到家!",
     ]
 }
+
+extension L10n {
+    static let enPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["one": "%1$d more day for the next pond friend.", "other": "%1$d more days for the next pond friend."],
+        "daily_streak_best": ["one": "Best streak: %1$d day", "other": "Best streak: %1$d days"],
+        "daily_win_streak": ["one": "%1$d day in a row.", "other": "%1$d days in a row."],
+        "daily_win_total": ["one": "%1$d daily pond cleared in all", "other": "%1$d daily ponds cleared in all"],
+    ]
+}
+
+extension L10n {
+    static let arPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["few": "%1$d أيام حتى صديق البركة التالي.", "many": "%1$d يومًا حتى صديق البركة التالي.", "one": "يوم واحد حتى صديق البركة التالي.", "other": "%1$d يوم حتى صديق البركة التالي.", "two": "يومان حتى صديق البركة التالي.", "zero": "%1$d يوم حتى صديق البركة التالي."],
+        "daily_streak_best": ["few": "أفضل سلسلة: %1$d أيام", "many": "أفضل سلسلة: %1$d يومًا", "one": "أفضل سلسلة: يوم واحد", "other": "أفضل سلسلة: %1$d يوم", "two": "أفضل سلسلة: يومان", "zero": "أفضل سلسلة: %1$d يوم"],
+        "daily_win_streak": ["few": "%1$d أيام متتالية.", "many": "%1$d يومًا متتاليًا.", "one": "يوم واحد متتالٍ.", "other": "%1$d يوم متتالٍ.", "two": "يومان متتاليان.", "zero": "%1$d يوم متتالٍ."],
+        "daily_win_total": ["few": "%1$d برك يومية مكتملة إجمالًا", "many": "%1$d بركة يومية مكتملة إجمالًا", "one": "بركة يومية واحدة مكتملة إجمالًا", "other": "%1$d بركة يومية مكتملة إجمالًا", "two": "بركتان يوميتان مكتملتان إجمالًا", "zero": "%1$d بركة يومية مكتملة إجمالًا"],
+    ]
+}
+
+extension L10n {
+    static let dePlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["one": "Noch %1$d Tag bis zum nächsten Teichfreund.", "other": "Noch %1$d Tage bis zum nächsten Teichfreund."],
+        "daily_streak_best": ["one": "Beste Serie: %1$d Tag", "other": "Beste Serie: %1$d Tage"],
+        "daily_win_streak": ["one": "%1$d Tag hintereinander.", "other": "%1$d Tage hintereinander."],
+        "daily_win_total": ["one": "%1$d Tagesteich insgesamt geschafft", "other": "%1$d Tagesteiche insgesamt geschafft"],
+    ]
+}
+
+extension L10n {
+    static let esPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["many": "%1$d días más para el próximo amigo del estanque.", "one": "%1$d día más para el próximo amigo del estanque.", "other": "%1$d días más para el próximo amigo del estanque."],
+        "daily_streak_best": ["many": "Mejor racha: %1$d días", "one": "Mejor racha: %1$d día", "other": "Mejor racha: %1$d días"],
+        "daily_win_streak": ["many": "%1$d días seguidos.", "one": "%1$d día seguido.", "other": "%1$d días seguidos."],
+        "daily_win_total": ["many": "%1$d estanques diarios superados en total", "one": "%1$d estanque diario superado en total", "other": "%1$d estanques diarios superados en total"],
+    ]
+}
+
+extension L10n {
+    static let frPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["many": "Encore %1$d de jours avant le prochain ami de l’étang.", "one": "Encore %1$d jour avant le prochain ami de l’étang.", "other": "Encore %1$d jours avant le prochain ami de l’étang."],
+        "daily_streak_best": ["many": "Meilleure série : %1$d de jours", "one": "Meilleure série : %1$d jour", "other": "Meilleure série : %1$d jours"],
+        "daily_win_streak": ["many": "%1$d de jours d’affilée.", "one": "%1$d jour d’affilée.", "other": "%1$d jours d’affilée."],
+        "daily_win_total": ["many": "%1$d d’étangs du jour réussis en tout", "one": "%1$d étang du jour réussi en tout", "other": "%1$d étangs du jour réussis en tout"],
+    ]
+}
+
+extension L10n {
+    static let hiPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["one": "अगले तालाबी दोस्त के लिए %1$d दिन और।", "other": "अगले तालाबी दोस्त के लिए %1$d दिन और।"],
+        "daily_streak_best": ["one": "सर्वश्रेष्ठ लय: %1$d दिन", "other": "सर्वश्रेष्ठ लय: %1$d दिन"],
+        "daily_win_streak": ["one": "लगातार %1$d दिन।", "other": "लगातार %1$d दिन।"],
+        "daily_win_total": ["one": "कुल %1$d दैनिक तालाब पूरा", "other": "कुल %1$d दैनिक तालाब पूरे"],
+    ]
+}
+
+extension L10n {
+    static let idPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["other": "%1$d hari lagi untuk teman kolam berikutnya."],
+        "daily_streak_best": ["other": "Rentetan terbaik: %1$d hari"],
+        "daily_win_streak": ["other": "%1$d hari berturut-turut."],
+        "daily_win_total": ["other": "%1$d Kolam Harian selesai seluruhnya"],
+    ]
+}
+
+extension L10n {
+    static let itPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["many": "Ancora %1$d giorni per il prossimo amico dello stagno.", "one": "Ancora %1$d giorno per il prossimo amico dello stagno.", "other": "Ancora %1$d giorni per il prossimo amico dello stagno."],
+        "daily_streak_best": ["many": "Serie record: %1$d giorni", "one": "Serie record: %1$d giorno", "other": "Serie record: %1$d giorni"],
+        "daily_win_streak": ["many": "%1$d giorni di fila.", "one": "%1$d giorno di fila.", "other": "%1$d giorni di fila."],
+        "daily_win_total": ["many": "%1$d stagni del giorno superati in tutto", "one": "%1$d stagno del giorno superato in tutto", "other": "%1$d stagni del giorno superati in tutto"],
+    ]
+}
+
+extension L10n {
+    static let hePlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["one": "עוד יום אחד עד חבר הבריכה הבא.", "other": "עוד %1$d ימים עד חבר הבריכה הבא.", "two": "עוד יומיים עד חבר הבריכה הבא."],
+        "daily_streak_best": ["one": "הרצף הטוב ביותר: יום אחד", "other": "הרצף הטוב ביותר: %1$d ימים", "two": "הרצף הטוב ביותר: יומיים"],
+        "daily_win_streak": ["one": "יום אחד ברצף.", "other": "%1$d ימים ברצף.", "two": "יומיים ברצף."],
+        "daily_win_total": ["one": "בריכה יומית אחת הושלמה בסך הכול", "other": "%1$d בריכות יומיות הושלמו בסך הכול", "two": "שתי בריכות יומיות הושלמו בסך הכול"],
+    ]
+}
+
+extension L10n {
+    static let jaPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["other": "次の池の友だちまであと %1$d 日。"],
+        "daily_streak_best": ["other": "最高記録：%1$d日"],
+        "daily_win_streak": ["other": "%1$d日連続。"],
+        "daily_win_total": ["other": "デイリーの池 通算 %1$d 回クリア"],
+    ]
+}
+
+extension L10n {
+    static let koPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["other": "다음 연못 친구까지 %1$d일 남았어요."],
+        "daily_streak_best": ["other": "최고 연속 기록: %1$d일"],
+        "daily_win_streak": ["other": "%1$d일 연속."],
+        "daily_win_total": ["other": "오늘의 연못 총 %1$d회 완료"],
+    ]
+}
+
+extension L10n {
+    static let plPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["few": "Jeszcze %1$d dni do następnego przyjaciela stawu.", "many": "Jeszcze %1$d dni do następnego przyjaciela stawu.", "one": "Jeszcze %1$d dzień do następnego przyjaciela stawu.", "other": "Jeszcze %1$d dnia do następnego przyjaciela stawu."],
+        "daily_streak_best": ["few": "Najlepsza seria: %1$d dni", "many": "Najlepsza seria: %1$d dni", "one": "Najlepsza seria: %1$d dzień", "other": "Najlepsza seria: %1$d dnia"],
+        "daily_win_streak": ["few": "%1$d dni z rzędu.", "many": "%1$d dni z rzędu.", "one": "%1$d dzień z rzędu.", "other": "%1$d dnia z rzędu."],
+        "daily_win_total": ["few": "Łącznie ukończone %1$d stawy dnia", "many": "Łącznie ukończonych %1$d stawów dnia", "one": "Łącznie ukończony %1$d staw dnia", "other": "Łącznie ukończonego %1$d stawu dnia"],
+    ]
+}
+
+extension L10n {
+    static let ptPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["many": "Mais %1$d dias para o próximo amigo do lago.", "one": "Mais %1$d dia para o próximo amigo do lago.", "other": "Mais %1$d dias para o próximo amigo do lago."],
+        "daily_streak_best": ["many": "Melhor sequência: %1$d dias", "one": "Melhor sequência: %1$d dia", "other": "Melhor sequência: %1$d dias"],
+        "daily_win_streak": ["many": "%1$d dias seguidos.", "one": "%1$d dia seguido.", "other": "%1$d dias seguidos."],
+        "daily_win_total": ["many": "%1$d lagos diários concluídos ao todo", "one": "%1$d lago diário concluído ao todo", "other": "%1$d lagos diários concluídos ao todo"],
+    ]
+}
+
+extension L10n {
+    static let ruPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["few": "Ещё %1$d дня до следующего друга пруда.", "many": "Ещё %1$d дней до следующего друга пруда.", "one": "Ещё %1$d день до следующего друга пруда.", "other": "Ещё %1$d дня до следующего друга пруда."],
+        "daily_streak_best": ["few": "Лучшая серия: %1$d дня", "many": "Лучшая серия: %1$d дней", "one": "Лучшая серия: %1$d день", "other": "Лучшая серия: %1$d дня"],
+        "daily_win_streak": ["few": "%1$d дня подряд.", "many": "%1$d дней подряд.", "one": "%1$d день подряд.", "other": "%1$d дня подряд."],
+        "daily_win_total": ["few": "Всего пройдено %1$d пруда дня", "many": "Всего пройдено %1$d прудов дня", "one": "Всего пройден %1$d пруд дня", "other": "Всего пройдено %1$d пруда дня"],
+    ]
+}
+
+extension L10n {
+    static let trPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["one": "Sonraki gölet arkadaşına %1$d gün kaldı.", "other": "Sonraki gölet arkadaşına %1$d gün kaldı."],
+        "daily_streak_best": ["one": "En iyi seri: %1$d gün", "other": "En iyi seri: %1$d gün"],
+        "daily_win_streak": ["one": "Üst üste %1$d gün.", "other": "Üst üste %1$d gün."],
+        "daily_win_total": ["one": "Toplam %1$d günlük gölet tamamlandı", "other": "Toplam %1$d günlük gölet tamamlandı"],
+    ]
+}
+
+extension L10n {
+    static let zhPlurals: [String: [String: String]] = [
+        "daily_next_milestone": ["other": "再过 %1$d 天就有下一位池塘朋友。"],
+        "daily_streak_best": ["other": "最佳连续：%1$d 天"],
+        "daily_win_streak": ["other": "连续 %1$d 天。"],
+        "daily_win_total": ["other": "累计通关 %1$d 个每日池塘"],
+    ]
+}

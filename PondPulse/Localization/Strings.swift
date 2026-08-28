@@ -85,6 +85,69 @@ enum L10n {
         tables[language]?[key] ?? extras[language]?[key]
             ?? tables[.en]?[key] ?? extras[.en]?[key] ?? key
     }
+
+    static let pluralTables: [Language: [String: [String: String]]] = [
+        .en: enPlurals, .de: dePlurals, .es: esPlurals, .fr: frPlurals,
+        .id: idPlurals, .it: itPlurals, .pl: plPlurals, .pt: ptPlurals,
+        .tr: trPlurals, .ru: ruPlurals, .he: hePlurals, .ar: arPlurals,
+        .hi: hiPlurals, .zh: zhPlurals, .ja: jaPlurals, .ko: koPlurals,
+    ]
+
+    /// The CLDR plural category `count` falls into for `language`.
+    ///
+    /// Swift has no plural selector of its own, and `stringsdict` is a
+    /// compile-time bundle mechanism that cannot answer for a language the
+    /// player picked in-app - which is the whole point of this table. So the
+    /// rules for the sixteen shipped languages are written out. Anything not
+    /// listed falls through to `other`, which every plurals block always
+    /// defines, so an unhandled language degrades to a sentence rather than to
+    /// a missing string.
+    static func pluralCategory(_ count: Int, _ language: Language) -> String {
+        let n = abs(count)
+        switch language {
+        // No grammatical plural at all.
+        case .ja, .ko, .zh, .id:
+            return "other"
+        // one for exactly 1.
+        case .en, .de, .es, .it, .tr:
+            return n == 1 ? "one" : "other"
+        // one for 0 and 1.
+        case .fr, .hi, .pt:
+            return n <= 1 ? "one" : "other"
+        case .ru:
+            if n % 10 == 1 && n % 100 != 11 { return "one" }
+            if (2...4).contains(n % 10) && !(12...14).contains(n % 100) { return "few" }
+            return "many"
+        case .pl:
+            if n == 1 { return "one" }
+            if (2...4).contains(n % 10) && !(12...14).contains(n % 100) { return "few" }
+            return "many"
+        case .ar:
+            if n == 0 { return "zero" }
+            if n == 1 { return "one" }
+            if n == 2 { return "two" }
+            if (3...10).contains(n % 100) { return "few" }
+            if (11...99).contains(n % 100) { return "many" }
+            return "other"
+        case .he:
+            if n == 1 { return "one" }
+            if n == 2 { return "two" }
+            if n > 10 && n % 10 == 0 { return "many" }
+            return "other"
+        }
+    }
+
+    /// The plural form for `key` at `count`, falling back through the
+    /// language's own `other` and then English.
+    static func plural(_ key: String, count: Int, in language: Language) -> String {
+        let category = pluralCategory(count, language)
+        if let forms = pluralTables[language]?[key] {
+            if let text = forms[category] { return text }
+            if let text = forms["other"] { return text }
+        }
+        let english = pluralTables[.en]?[key]
+        return english?[pluralCategory(count, .en)] ?? english?["other"] ?? key
+    }
 }
 
 /// One language's view of every string; screens grab it from the environment.
@@ -99,6 +162,13 @@ struct Strings {
     /// `strings["hint_left", hints]` - positional formatting (%1$d / %1$@).
     subscript(_ key: String, _ args: CVarArg...) -> String {
         String(format: L10n.string(key, in: language), arguments: args)
+    }
+
+    /// `strings.plural("daily_win_streak", streak)` - Android's <plurals>.
+    /// The count is both the selector and the sole format argument, which is
+    /// how every one of these is written.
+    func plural(_ key: String, _ count: Int) -> String {
+        String(format: L10n.plural(key, count: count, in: language), count)
     }
 }
 

@@ -2,13 +2,50 @@
 //  ShopView.swift
 //  PondPulse
 //
-//  The Pond Shop: premium upgrade, the consumable hint pack, themes (with a
-//  full try-on preview), floater skins and pad styles. Port of the Android
-//  ui/ShopScreen.kt; the purchase confirm is a native alert and grants
-//  locally, exactly like the Android pre-release placeholder.
+//  The Pond Shop: the premium upgrade, the hint pack, the coin packs, and the
+//  three cosmetic shelves - friends, lily pads and themes (with a full try-on
+//  preview). Port of the Android ui/ShopScreen.kt.
+//
+//  Two currencies, and which one a card uses is decided by its `Unlock`:
+//  everything cosmetic is `.coins` and is settled locally against `CoinBank`
+//  after a confirm alert; premium, the hint pack and the coin packs are real
+//  StoreKit products, where Apple's payment sheet *is* the confirmation and no
+//  alert of ours goes in front of it.
+//
+//  The front page shows a taster of each shelf and sends the rest to
+//  `ShopShelfView`: with 36 friends and 22 pads on sale, one page was several
+//  screens of thumb work before the themes even appeared.
 //
 
 import SwiftUI
+
+/// How many of each shelf the shop's front page shows. The rest live on the
+/// shelf's own page, one tap away.
+private let skinsPreview = 6
+private let padsPreview = 3
+private let themesPreview = 2
+
+/// The handful a front-page shelf shows: whatever is equipped first, then
+/// catalog order - free, then earned, then paid - so the taster is never all
+/// padlocks and never only things already owned.
+private func previewSlice<T>(_ all: [T], _ limit: Int, _ isSelected: (T) -> Bool) -> [T] {
+    guard all.count > limit else { return all }
+    return Array((all.filter(isSelected) + all.filter { !isSelected($0) }).prefix(limit))
+}
+
+/// A coin purchase waiting for its confirm alert. Granting equips the item too.
+///
+/// The price rides on the pending buy rather than being re-derived at confirm
+/// time, so the alert can never charge a price different from the one the card
+/// showed.
+struct PendingBuy: Identifiable {
+    let productId: String
+    let name: String
+    let price: Int
+    let onGranted: () -> Void
+
+    var id: String { productId }
+}
 
 struct ShopView: View {
     @ObservedObject var vm: AppViewModel
@@ -16,101 +53,91 @@ struct ShopView: View {
     @Environment(\.strings) private var strings
 
     @State private var previewTheme: ThemeItem?
+    @State private var pending: PendingBuy?
     @State private var showPremiumDetails = false
     @State private var restored = false
 
     var body: some View {
-        // Premium exclusives only join the shelves once premium is owned; before
-        // that they live inside the premium card's detail view.
-        let visibleThemes = Catalog.themes.filter { vm.isPremium || !$0.unlock.isPremium }
-        let visibleSkins = Catalog.skins.filter { vm.isPremium || !$0.unlock.isPremium }
-        let visiblePads = Catalog.pads.filter { vm.isPremium || !$0.unlock.isPremium }
+        let shelves = ShopShelves(vm: vm)
 
         ZStack {
             VStack(spacing: 0) {
-                ScreenHeader(title: strings["shop_title"], onBack: { vm.back() })
+                ScreenHeader(title: strings["shop_title"], onBack: { vm.back() }) {
+                    CoinChip(coins: vm.coins)
+                }
 
                 ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) {
-                        PremiumCard(
-                            isPremium: vm.isPremium,
-                            levelCount: vm.premiumLevelCount(),
-                            price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
-                            onOpenDetails: { showPremiumDetails = true },
-                            onBuy: { buy(Catalog.premiumId) }
-                        )
+                        // Closed testing grants premium to everyone, so there is
+                        // nothing for its card to offer and nothing for the coin
+                        // packs to sell. Both come back with the economy.
+                        if !FreeMode.enabled {
+                            PremiumCard(
+                                isPremium: vm.isPremium,
+                                levelCount: vm.premiumLevelCount(),
+                                price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
+                                onOpenDetails: { showPremiumDetails = true },
+                                onBuy: { buyForMoney(Catalog.premiumId) }
+                            )
+                        }
 
                         if !vm.isPremium {
                             HintPackCard(
                                 hintsLeft: vm.hintsLeft,
-                                price: vm.price(Catalog.hintsId, fallback: Catalog.hintsPrice)
-                            ) {
-                                buy(Catalog.hintsId)
-                            }
-                        }
-
-                        SectionHeader(
-                            title: strings["shop_section_themes"],
-                            desc: strings["shop_section_themes_desc"],
-                            ownedCount: visibleThemes.count { usable($0.unlock, Catalog.themeProductId($0.id)) },
-                            totalCount: visibleThemes.count
-                        )
-                        .id("section-themes")
-                        ForEach(visibleThemes) { theme in
-                            ThemeRow(
-                                theme: theme,
-                                selected: theme.id == vm.themeId,
-                                usable: usable(theme.unlock, Catalog.themeProductId(theme.id)),
-                                price: resolvedPrice(theme.unlock, Catalog.themeProductId(theme.id)),
-                                onOpen: { previewTheme = theme }
+                                affordable: vm.canAfford(CoinBank.hintBundle * CoinBank.priceHint),
+                                packPrice: vm.price(Catalog.hintsId, fallback: Catalog.hintsPrice),
+                                onBuyWithCoins: { vm.buyHints(count: CoinBank.hintBundle) },
+                                onBuyPack: { buyForMoney(Catalog.hintsId) }
                             )
                         }
 
+                        if !FreeMode.enabled {
+                            CoinPacksCard(coins: vm.coins, priceOf: { vm.price($0, fallback: $1) }) { productId in
+                                buyForMoney(productId)
+                            }
+                        }
+
+                        // Friends first - they are what the player looks at all
+                        // game - then pads, then themes, which are full-width
+                        // rows and so cost the most height per item.
                         SectionHeader(
                             title: strings["shop_section_skins"],
                             desc: strings["shop_section_skins_desc"],
-                            ownedCount: visibleSkins.count { usable($0.unlock, Catalog.skinProductId($0.id)) },
-                            totalCount: visibleSkins.count
+                            ownedCount: shelves.ownedSkins,
+                            totalCount: shelves.skins.count
                         )
                         .id("section-skins")
-                        grid(section: "skins", items: visibleSkins) { skin in
-                            ShopGridCard(
-                                name: strings[skin.nameKey],
-                                unlock: skin.unlock,
-                                selected: skin.id == vm.skinId,
-                                usable: usable(skin.unlock, Catalog.skinProductId(skin.id)),
-                                displayPrice: resolvedPrice(skin.unlock, Catalog.skinProductId(skin.id)),
-                                onSelect: { vm.selectSkin(skin.id) },
-                                onBuy: { _ in
-                                    buy(Catalog.skinProductId(skin.id)) { vm.selectSkin(skin.id) }
-                                }
-                            ) {
-                                SkinPreview(skinId: skin.id).aspectRatio(1.35, contentMode: .fit)
-                            }
+                        skinGrid(previewSlice(shelves.skins, skinsPreview) { $0.id == vm.skinId },
+                                 shelves: shelves, keyPrefix: "front")
+                        if shelves.skins.count > skinsPreview {
+                            ShelfLink(total: shelves.skins.count) { vm.navigate(.shopShelf(.friends)) }
                         }
 
                         SectionHeader(
                             title: strings["shop_section_pads"],
                             desc: strings["shop_section_pads_desc"],
-                            ownedCount: visiblePads.count { usable($0.unlock, Catalog.padProductId($0.id)) },
-                            totalCount: visiblePads.count
+                            ownedCount: shelves.ownedPads,
+                            totalCount: shelves.pads.count
                         )
                         .id("section-pads")
-                        grid(section: "pads", items: visiblePads) { pad in
-                            ShopGridCard(
-                                name: strings[pad.nameKey],
-                                unlock: pad.unlock,
-                                selected: pad.id == vm.padId,
-                                usable: usable(pad.unlock, Catalog.padProductId(pad.id)),
-                                displayPrice: resolvedPrice(pad.unlock, Catalog.padProductId(pad.id)),
-                                onSelect: { vm.selectPad(pad.id) },
-                                onBuy: { _ in
-                                    buy(Catalog.padProductId(pad.id)) { vm.selectPad(pad.id) }
-                                }
-                            ) {
-                                PadPreview(padId: pad.id).aspectRatio(1.35, contentMode: .fit)
-                            }
+                        padGrid(previewSlice(shelves.pads, padsPreview) { $0.id == vm.padId },
+                                shelves: shelves, keyPrefix: "front")
+                        if shelves.pads.count > padsPreview {
+                            ShelfLink(total: shelves.pads.count) { vm.navigate(.shopShelf(.pads)) }
+                        }
+
+                        SectionHeader(
+                            title: strings["shop_section_themes"],
+                            desc: strings["shop_section_themes_desc"],
+                            ownedCount: shelves.ownedThemes,
+                            totalCount: shelves.themes.count
+                        )
+                        .id("section-themes")
+                        themeList(previewSlice(shelves.themes, themesPreview) { $0.id == vm.themeId },
+                                  shelves: shelves)
+                        if shelves.themes.count > themesPreview {
+                            ShelfLink(total: shelves.themes.count) { vm.navigate(.shopShelf(.themes)) }
                         }
 
                         Text(strings["shop_note"])
@@ -152,39 +179,16 @@ struct ShopView: View {
             }
             .pondContentWidth()
 
-            // Blocks double-taps while the App Store payment sheet is up.
-            if vm.purchasing {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(palette.accent)
-            }
+            purchasingVeil
 
-            // Full theme try-on: the dialog is re-themed with the candidate palette.
             if let theme = previewTheme {
-                ThemePreviewDialog(
-                    theme: theme,
-                    skinId: vm.skinId,
-                    padId: vm.padId,
-                    selected: theme.id == vm.themeId,
-                    usable: usable(theme.unlock, Catalog.themeProductId(theme.id)),
-                    price: resolvedPrice(theme.unlock, Catalog.themeProductId(theme.id)),
-                    highestSolved: vm.highestSolvedLevel(),
-                    onApply: {
-                        vm.selectTheme(theme.id)
-                        previewTheme = nil
-                    },
-                    onBuy: { _ in
-                        previewTheme = nil
-                        buy(Catalog.themeProductId(theme.id)) { vm.selectTheme(theme.id) }
-                    },
-                    onDismiss: { previewTheme = nil }
-                )
-                .transition(.opacity)
+                themeDialog(theme, shelves: shelves)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: previewTheme?.id)
+        .coinConfirm($pending, coins: vm.coins) { buy in
+            if vm.buyWithCoins(price: buy.price, productId: buy.productId) { buy.onGranted() }
+        }
         .sheet(isPresented: $showPremiumDetails) {
             PremiumDetailsSheet(
                 isPremium: vm.isPremium,
@@ -192,7 +196,7 @@ struct ShopView: View {
                 price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
                 onBuy: {
                     showPremiumDetails = false
-                    buy(Catalog.premiumId)
+                    buyForMoney(Catalog.premiumId)
                 }
             )
             .environment(\.palette, palette)
@@ -200,31 +204,119 @@ struct ShopView: View {
         }
     }
 
-    /// Runs the App Store payment sheet (which is the confirmation) and equips
-    /// the item once the verified purchase lands.
-    private func buy(_ productId: String, onGranted: @escaping () -> Void = {}) {
-        Task {
-            if await vm.purchase(productId) { onGranted() }
+    @ViewBuilder private var purchasingVeil: some View {
+        // Blocks double-taps while the App Store payment sheet is up.
+        if vm.purchasing {
+            Color.black.opacity(0.25).ignoresSafeArea()
+            ProgressView().controlSize(.large).tint(palette.accent)
         }
     }
 
-    private func usable(_ unlock: Unlock, _ productId: String) -> Bool {
-        vm.isOwned(unlock, productId: productId)
+    /// Full theme try-on: the dialog is re-themed with the candidate palette.
+    private func themeDialog(_ theme: ThemeItem, shelves: ShopShelves) -> some View {
+        ThemePreviewDialog(
+            theme: theme,
+            skinId: vm.skinId,
+            padId: vm.padId,
+            selected: theme.id == vm.themeId,
+            usable: shelves.usable(theme.unlock, Catalog.themeProductId(theme.id)),
+            affordable: vm.canAfford(theme.unlock.coinPrice ?? 0),
+            highestSolved: vm.highestSolvedLevel(),
+            onApply: {
+                vm.selectTheme(theme.id)
+                previewTheme = nil
+            },
+            onBuy: {
+                previewTheme = nil
+                pending = PendingBuy(
+                    productId: Catalog.themeProductId(theme.id),
+                    name: strings[theme.nameKey],
+                    price: theme.unlock.coinPrice ?? 0
+                ) { vm.selectTheme(theme.id) }
+            },
+            onDismiss: { previewTheme = nil }
+        )
+        .transition(.opacity)
     }
 
-    /// The App Store's localized price for a paid item, Catalog's until loaded.
-    private func resolvedPrice(_ unlock: Unlock, _ productId: String) -> String? {
-        unlock.price.map { vm.price(productId, fallback: $0) }
+    /// Runs the App Store payment sheet, which is its own confirmation.
+    private func buyForMoney(_ productId: String, onGranted: @escaping () -> Void = {}) {
+        Task { if await vm.purchase(productId) { onGranted() } }
     }
 
-    /// `section` names the grid, because two of these live in one LazyVStack: keyed
-    /// by row index alone, the pads' first row and the skins' first row are the same
-    /// identity to SwiftUI, and the second grid never renders at all.
-    private func grid<Item: Identifiable, Card: View>(
-        section: String, items: [Item], @ViewBuilder card: @escaping (Item) -> Card
+    // MARK: Shelves
+
+    @ViewBuilder
+    private func skinGrid(_ skins: [SkinItem], shelves: ShopShelves, keyPrefix: String) -> some View {
+        gridRows(skins, keyPrefix: keyPrefix + "-skin") { skin in
+            let productId = Catalog.skinProductId(skin.id)
+            ShopGridCard(
+                name: strings[skin.nameKey],
+                unlock: skin.unlock,
+                selected: skin.id == vm.skinId,
+                usable: shelves.usable(skin.unlock, productId),
+                affordable: vm.canAfford(skin.unlock.coinPrice ?? 0),
+                onSelect: { vm.selectSkin(skin.id) },
+                onBuy: {
+                    pending = PendingBuy(
+                        productId: productId,
+                        name: strings[skin.nameKey],
+                        price: skin.unlock.coinPrice ?? 0
+                    ) { vm.selectSkin(skin.id) }
+                }
+            ) {
+                SkinPreview(skinId: skin.id).aspectRatio(1.35, contentMode: .fit)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func padGrid(_ pads: [PadItem], shelves: ShopShelves, keyPrefix: String) -> some View {
+        gridRows(pads, keyPrefix: keyPrefix + "-pad") { pad in
+            let productId = Catalog.padProductId(pad.id)
+            ShopGridCard(
+                name: strings[pad.nameKey],
+                unlock: pad.unlock,
+                selected: pad.id == vm.padId,
+                usable: shelves.usable(pad.unlock, productId),
+                affordable: vm.canAfford(pad.unlock.coinPrice ?? 0),
+                onSelect: { vm.selectPad(pad.id) },
+                onBuy: {
+                    pending = PendingBuy(
+                        productId: productId,
+                        name: strings[pad.nameKey],
+                        price: pad.unlock.coinPrice ?? 0
+                    ) { vm.selectPad(pad.id) }
+                }
+            ) {
+                PadPreview(padId: pad.id).aspectRatio(1.35, contentMode: .fit)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func themeList(_ themes: [ThemeItem], shelves: ShopShelves) -> some View {
+        ForEach(themes) { theme in
+            ThemeRow(
+                theme: theme,
+                selected: theme.id == vm.themeId,
+                usable: shelves.usable(theme.unlock, Catalog.themeProductId(theme.id)),
+                affordable: vm.canAfford(theme.unlock.coinPrice ?? 0),
+                onOpen: { previewTheme = theme }
+            )
+        }
+    }
+
+    /// `keyPrefix` names the grid, because several of these live in one
+    /// LazyVStack: keyed by row index alone, the pads' first row and the skins'
+    /// first row are the same identity to SwiftUI, and the second grid never
+    /// renders at all.
+    @ViewBuilder
+    private func gridRows<Item: Identifiable, Card: View>(
+        _ items: [Item], keyPrefix: String, @ViewBuilder card: @escaping (Item) -> Card
     ) -> some View {
         let rows = stride(from: 0, to: items.count, by: 3).map { Array(items[$0..<min($0 + 3, items.count)]) }
-        return ForEach(Array(rows.enumerated()), id: \.offset) { index, rowItems in
+        ForEach(Array(rows.enumerated()), id: \.offset) { index, rowItems in
             HStack(alignment: .top, spacing: 10) {
                 ForEach(rowItems) { item in
                     card(item).frame(maxWidth: .infinity)
@@ -233,7 +325,235 @@ struct ShopView: View {
                     Color.clear.frame(maxWidth: .infinity)
                 }
             }
-            .id("\(section)-row-\(index)")
+            .id("\(keyPrefix)-row-\(index)")
+        }
+    }
+}
+
+/// What both shop pages need: what is on sale, and the one rule deciding
+/// whether a thing is usable. Gathered in one place so the front page and a
+/// shelf page can never disagree about what the player owns.
+struct ShopShelves {
+    let themes: [ThemeItem]
+    let skins: [SkinItem]
+    let pads: [PadItem]
+    let usable: (Unlock, String) -> Bool
+
+    let ownedThemes: Int
+    let ownedSkins: Int
+    let ownedPads: Int
+
+    @MainActor
+    init(vm: AppViewModel) {
+        // Premium exclusives only join the shelves once premium is owned;
+        // before that they live inside the premium card's detail view.
+        let premium = vm.isPremium
+        themes = Catalog.themes.filter { premium || !$0.unlock.isPremium }
+        skins = Catalog.skins.filter { premium || !$0.unlock.isPremium }
+        pads = Catalog.pads.filter { premium || !$0.unlock.isPremium }
+        // The same rule the pond roster uses, deliberately: a friend earned on
+        // the golden-pond ladder is owned, and a shelf that asked for coins for
+        // it anyway would charge twice for one thing.
+        usable = { unlock, productId in vm.isOwned(unlock, productId: productId) }
+        ownedThemes = themes.count { vm.isOwned($0.unlock, productId: Catalog.themeProductId($0.id)) }
+        ownedSkins = skins.count { vm.isOwned($0.unlock, productId: Catalog.skinProductId($0.id)) }
+        ownedPads = pads.count { vm.isOwned($0.unlock, productId: Catalog.padProductId($0.id)) }
+    }
+}
+
+/// One shelf on its own page - every friend, pad or theme in the catalog. The
+/// shop's front page keeps a taster of each and sends the rest here, which is
+/// what stops a 36-item catalog from burying the two shelves under it.
+struct ShopShelfView: View {
+    @ObservedObject var vm: AppViewModel
+    let shelf: Shelf
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+
+    @State private var previewTheme: ThemeItem?
+    @State private var pending: PendingBuy?
+
+    var body: some View {
+        let shelves = ShopShelves(vm: vm)
+        let titleKey: String
+        let descKey: String
+        let owned: Int
+        let total: Int
+        switch shelf {
+        case .friends:
+            titleKey = "shop_section_skins"; descKey = "shop_section_skins_desc"
+            owned = shelves.ownedSkins; total = shelves.skins.count
+        case .pads:
+            titleKey = "shop_section_pads"; descKey = "shop_section_pads_desc"
+            owned = shelves.ownedPads; total = shelves.pads.count
+        case .themes:
+            titleKey = "shop_section_themes"; descKey = "shop_section_themes_desc"
+            owned = shelves.ownedThemes; total = shelves.themes.count
+        }
+
+        return ZStack {
+            VStack(spacing: 0) {
+                ScreenHeader(title: strings[titleKey], onBack: { vm.back() }) {
+                    CoinChip(coins: vm.coins)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        // A shelf page's own subtitle and tally; the title is
+                        // already in the bar.
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(strings[descKey])
+                                .font(.game(12))
+                                .foregroundStyle(palette.textSecondary)
+                            Spacer()
+                            Text(strings["shop_count", owned, total])
+                                .font(.game(13, .semibold))
+                                .foregroundStyle(palette.textSecondary)
+                        }
+                        .padding(.top, 4)
+
+                        switch shelf {
+                        case .friends: shelfSkins(shelves)
+                        case .pads: shelfPads(shelves)
+                        case .themes: shelfThemes(shelves)
+                        }
+
+                        Text(strings["shop_note"])
+                            .font(.game(12))
+                            .foregroundStyle(palette.textSecondary.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 10)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 32)
+                }
+            }
+            .pondContentWidth()
+
+            if let theme = previewTheme {
+                ThemePreviewDialog(
+                    theme: theme,
+                    skinId: vm.skinId,
+                    padId: vm.padId,
+                    selected: theme.id == vm.themeId,
+                    usable: shelves.usable(theme.unlock, Catalog.themeProductId(theme.id)),
+                    affordable: vm.canAfford(theme.unlock.coinPrice ?? 0),
+                    highestSolved: vm.highestSolvedLevel(),
+                    onApply: {
+                        vm.selectTheme(theme.id)
+                        previewTheme = nil
+                    },
+                    onBuy: {
+                        previewTheme = nil
+                        pending = PendingBuy(
+                            productId: Catalog.themeProductId(theme.id),
+                            name: strings[theme.nameKey],
+                            price: theme.unlock.coinPrice ?? 0
+                        ) { vm.selectTheme(theme.id) }
+                    },
+                    onDismiss: { previewTheme = nil }
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: previewTheme?.id)
+        .coinConfirm($pending, coins: vm.coins) { buy in
+            if vm.buyWithCoins(price: buy.price, productId: buy.productId) { buy.onGranted() }
+        }
+    }
+
+    @ViewBuilder private func shelfSkins(_ shelves: ShopShelves) -> some View {
+        gridRows(shelves.skins) { skin in
+            let productId = Catalog.skinProductId(skin.id)
+            ShopGridCard(
+                name: strings[skin.nameKey],
+                unlock: skin.unlock,
+                selected: skin.id == vm.skinId,
+                usable: shelves.usable(skin.unlock, productId),
+                affordable: vm.canAfford(skin.unlock.coinPrice ?? 0),
+                onSelect: { vm.selectSkin(skin.id) },
+                onBuy: {
+                    pending = PendingBuy(productId: productId, name: strings[skin.nameKey],
+                                         price: skin.unlock.coinPrice ?? 0) { vm.selectSkin(skin.id) }
+                }
+            ) { SkinPreview(skinId: skin.id).aspectRatio(1.35, contentMode: .fit) }
+        }
+    }
+
+    @ViewBuilder private func shelfPads(_ shelves: ShopShelves) -> some View {
+        gridRows(shelves.pads) { pad in
+            let productId = Catalog.padProductId(pad.id)
+            ShopGridCard(
+                name: strings[pad.nameKey],
+                unlock: pad.unlock,
+                selected: pad.id == vm.padId,
+                usable: shelves.usable(pad.unlock, productId),
+                affordable: vm.canAfford(pad.unlock.coinPrice ?? 0),
+                onSelect: { vm.selectPad(pad.id) },
+                onBuy: {
+                    pending = PendingBuy(productId: productId, name: strings[pad.nameKey],
+                                         price: pad.unlock.coinPrice ?? 0) { vm.selectPad(pad.id) }
+                }
+            ) { PadPreview(padId: pad.id).aspectRatio(1.35, contentMode: .fit) }
+        }
+    }
+
+    @ViewBuilder private func shelfThemes(_ shelves: ShopShelves) -> some View {
+        ForEach(shelves.themes) { theme in
+            ThemeRow(
+                theme: theme,
+                selected: theme.id == vm.themeId,
+                usable: shelves.usable(theme.unlock, Catalog.themeProductId(theme.id)),
+                affordable: vm.canAfford(theme.unlock.coinPrice ?? 0),
+                onOpen: { previewTheme = theme }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func gridRows<Item: Identifiable, Card: View>(
+        _ items: [Item], @ViewBuilder card: @escaping (Item) -> Card
+    ) -> some View {
+        let rows = stride(from: 0, to: items.count, by: 3).map { Array(items[$0..<min($0 + 3, items.count)]) }
+        ForEach(Array(rows.enumerated()), id: \.offset) { index, rowItems in
+            HStack(alignment: .top, spacing: 10) {
+                ForEach(rowItems) { item in card(item).frame(maxWidth: .infinity) }
+                ForEach(0..<(3 - rowItems.count), id: \.self) { _ in
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+            }
+            .id("shelf-row-\(index)")
+        }
+    }
+}
+
+/// The coin purchase confirmation, shared by both shop pages.
+private extension View {
+    func coinConfirm(
+        _ pending: Binding<PendingBuy?>, coins: Int, onConfirm: @escaping (PendingBuy) -> Void
+    ) -> some View {
+        modifier(CoinConfirmModifier(pending: pending, coins: coins, onConfirm: onConfirm))
+    }
+}
+
+private struct CoinConfirmModifier: ViewModifier {
+    @Environment(\.strings) private var strings
+    @Binding var pending: PendingBuy?
+    let coins: Int
+    let onConfirm: (PendingBuy) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(
+            pending.map { strings["shop_buy_title", $0.name] } ?? "",
+            isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+            presenting: pending
+        ) { buy in
+            Button(strings["shop_buy_confirm"]) { onConfirm(buy) }
+            Button(strings["shop_cancel"], role: .cancel) {}
+        } message: { buy in
+            Text(buy.price > 0 && !FreeMode.enabled
+                ? strings["shop_buy_coins_body", buy.price, coins]
+                : strings["shop_buy_body"])
         }
     }
 }
@@ -310,16 +630,20 @@ private struct PremiumCard: View {
     }
 }
 
-/// Consumable 50-hint pack; premium owners never see it (hints are unlimited).
+/// Hints, sold two ways: five for coins, or fifty for money. Premium owners
+/// never see it - their hints are unlimited.
 private struct HintPackCard: View {
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
     let hintsLeft: Int
-    let price: String
-    let onBuy: () -> Void
+    let affordable: Bool
+    let packPrice: String
+    let onBuyWithCoins: () -> Void
+    let onBuyPack: () -> Void
 
     var body: some View {
-        Button(action: onBuy) {
+        let bundlePrice = CoinBank.hintBundle * CoinBank.priceHint
+        VStack(spacing: 10) {
             HStack(spacing: 12) {
                 Image(systemName: "lightbulb.fill")
                     .font(.system(size: 24, weight: .semibold))
@@ -333,15 +657,125 @@ private struct HintPackCard: View {
                         .foregroundStyle(palette.textSecondary)
                 }
                 Spacer()
-                Text(strings["shop_free_tag"])
-                    .font(.game(15, .bold))
-                    .foregroundStyle(palette.accent)
             }
-            .padding(14)
-            .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            HStack(spacing: 8) {
+                Button(action: onBuyWithCoins) {
+                    HStack(spacing: 8) {
+                        Text(strings["shop_hints_bundle", CoinBank.hintBundle])
+                            .font(.game(13, .semibold))
+                            .foregroundStyle(palette.textPrimary)
+                        CoinPrice(price: bundlePrice, affordable: affordable)
+                    }
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(palette.surfaceHigh, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(SquishyButtonStyle())
+                .disabled(!affordable)
+                .opacity(affordable ? 1 : 0.5)
+
+                Button(action: onBuyPack) {
+                    HStack(spacing: 8) {
+                        Text(strings["shop_hints_pack", Catalog.hintsPerPack])
+                            .font(.game(13, .semibold))
+                            .foregroundStyle(palette.textPrimary)
+                        Text(packPrice)
+                            .font(.game(13, .bold))
+                            .foregroundStyle(palette.accent)
+                    }
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(palette.surfaceHigh, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(SquishyButtonStyle())
+            }
+        }
+        .padding(14)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.top, 10)
+    }
+}
+
+/// The coin packs - the one place money buys coins.
+///
+/// It sits under the hint card rather than at the top of the shop on purpose.
+/// Coins are meant to arrive by playing; this card is for someone who has
+/// already decided they want a particular friend today, not the first thing the
+/// shop asks of a visitor.
+///
+/// Android keeps these shut outside a debug build because Play Billing is not
+/// wired there yet and a free 500-coin pack would buy the whole catalogue.
+/// StoreKit *is* wired here, so on iOS they are simply open.
+private struct CoinPacksCard: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let coins: Int
+    let priceOf: (String, String) -> String
+    let onBuy: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                CoinIcon(size: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(strings["shop_section_coins"])
+                        .font(.game(15, .bold))
+                        .foregroundStyle(palette.textPrimary)
+                    Text(strings["shop_section_coins_desc", coins])
+                        .font(.game(12))
+                        .foregroundStyle(palette.textSecondary)
+                }
+                Spacer()
+            }
+            HStack(spacing: 8) {
+                ForEach(Array(CoinBank.coinPacks.enumerated()), id: \.offset) { index, amount in
+                    let productId = Catalog.coinPackIds[index]
+                    Button { onBuy(productId) } label: {
+                        VStack(spacing: 4) {
+                            CoinIcon(size: 22)
+                            Text("\(amount)")
+                                .font(.game(15, .bold))
+                                .foregroundStyle(palette.textPrimary)
+                            Text(priceOf(productId, Catalog.coinPackPrices[index]))
+                                .font(.game(11, .semibold))
+                                .foregroundStyle(palette.accent)
+                        }
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(palette.surfaceHigh, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(SquishyButtonStyle())
+                }
+            }
+        }
+        .padding(14)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.top, 10)
+    }
+}
+
+/// The one tap that opens a shelf's own page, sitting under its taster rows.
+private struct ShelfLink: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let total: Int
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 4) {
+                Text(strings["shop_show_all", total])
+                    .font(.game(14, .bold))
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .foregroundStyle(palette.accent)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity)
+            .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(SquishyButtonStyle())
-        .padding(.top, 10)
+        .padding(.top, 8)
     }
 }
 
@@ -380,7 +814,7 @@ private struct ThemeRow: View {
     let theme: ThemeItem
     let selected: Bool
     let usable: Bool
-    let price: String?
+    let affordable: Bool
     let onOpen: () -> Void
 
     var body: some View {
@@ -413,10 +847,12 @@ private struct ThemeRow: View {
                     Text(strings["bonus_locked_shop", count])
                         .font(.game(13, .semibold))
                         .foregroundStyle(palette.textSecondary)
-                } else if let price {
-                    Text(price)
-                        .font(.game(13, .bold))
-                        .foregroundStyle(palette.accent)
+                } else if let days = theme.unlock.rewardStreak {
+                    Text(strings["collection_streak_lock", days])
+                        .font(.game(13, .semibold))
+                        .foregroundStyle(palette.textSecondary)
+                } else if let price = theme.unlock.coinPrice {
+                    CoinPrice(price: price, affordable: affordable)
                 }
             }
             .padding(10)
@@ -437,10 +873,12 @@ struct ShopGridCard<Preview: View>: View {
     let unlock: Unlock
     let selected: Bool
     let usable: Bool
-    var displayPrice: String? = nil
+    var affordable: Bool = true
     let onSelect: () -> Void
-    let onBuy: (String) -> Void
+    let onBuy: () -> Void
     @ViewBuilder let preview: Preview
+
+    private var buyable: Bool { unlock.coinPrice != nil }
 
     var body: some View {
         Button {
@@ -448,14 +886,16 @@ struct ShopGridCard<Preview: View>: View {
                 // already equipped
             } else if usable {
                 onSelect()
-            } else if let price = displayPrice ?? unlock.price {
-                onBuy(price)
+            } else if buyable && affordable {
+                // A card you cannot afford does nothing rather than opening a
+                // dialog whose only button is disabled.
+                onBuy()
             }
         } label: {
             VStack(spacing: 6) {
                 preview
                     .overlay {
-                        if !usable, unlock.rewardLevel != nil || unlock.rewardBonusPonds != nil {
+                        if !usable, !buyable, !unlock.isFree {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(palette.background.opacity(0.55))
                             Image(systemName: "lock.fill")
@@ -468,9 +908,22 @@ struct ShopGridCard<Preview: View>: View {
                     .foregroundStyle(palette.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(caption)
-                    .font(.game(11, usable || unlock.price == nil ? .regular : .bold))
-                    .foregroundStyle(captionColor)
+                if !usable, case .coins(let price, let bonusCount) = unlock {
+                    CoinPrice(price: price, affordable: affordable)
+                    // The second door to it. Worth saying out loud: without this
+                    // the golden-pond ladder is invisible to anyone reading the
+                    // shelf, and it is the whole reason to go and play one.
+                    if let bonusCount {
+                        Text(strings["shop_or_bonus", bonusCount])
+                            .font(.game(10))
+                            .foregroundStyle(palette.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                } else {
+                    Text(caption)
+                        .font(.game(11))
+                        .foregroundStyle(selected ? palette.accent : palette.textSecondary)
+                }
             }
             .padding(8)
             .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -487,13 +940,8 @@ struct ShopGridCard<Preview: View>: View {
         if usable { return strings["shop_select"] }
         if let level = unlock.rewardLevel { return strings["shop_reward_level", level] }
         if let count = unlock.rewardBonusPonds { return strings["bonus_locked_shop", count] }
-        return displayPrice ?? unlock.price ?? ""
-    }
-
-    private var captionColor: Color {
-        if selected { return palette.accent }
-        if !usable, unlock.price != nil { return palette.accent }
-        return palette.textSecondary
+        if let days = unlock.rewardStreak { return strings["collection_streak_lock", days] }
+        return ""
     }
 }
 
@@ -509,10 +957,10 @@ private struct ThemePreviewDialog: View {
     let padId: String
     let selected: Bool
     let usable: Bool
-    let price: String?
+    let affordable: Bool
     let highestSolved: Int
     let onApply: () -> Void
-    let onBuy: (String) -> Void
+    let onBuy: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -537,8 +985,21 @@ private struct ThemePreviewDialog: View {
                         GhostButton(strings["close"], action: onDismiss)
                     } else if usable {
                         PrimaryButton(strings["shop_preview_use"], action: onApply)
-                    } else if let price {
-                        PrimaryButton(strings["shop_buy_confirm"]) { onBuy(price) }
+                    } else if let price = theme.unlock.coinPrice {
+                        // The price is always shown; the button only appears
+                        // when it can actually be paid, so the dialog never ends
+                        // in a button that refuses.
+                        VStack(spacing: 8) {
+                            CoinPrice(price: price, affordable: affordable)
+                            if affordable {
+                                PrimaryButton(strings["shop_buy_confirm"], action: onBuy)
+                            }
+                        }
+                    } else if let days = theme.unlock.rewardStreak {
+                        Text(strings["collection_streak_lock", days])
+                            .font(.game(14))
+                            .foregroundStyle(palette.textSecondary)
+                            .multilineTextAlignment(.center)
                     } else if let level = theme.unlock.rewardLevel {
                         Text(strings["shop_reward_unlock_at", level, highestSolved])
                             .font(.game(14))
@@ -806,27 +1267,63 @@ struct RewardUnlockBanner<Preview: View>: View {
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
     let name: String
-    let onOpenShop: () -> Void
+    let equipped: Bool
+    let onEquip: () -> Void
+    /// A lily pad is not a friend and does not "join your pond", so the heading
+    /// and the sentence under it both follow what was actually won.
+    var titleKey = "win_reward_title"
+    var bodyKey = "win_reward_body"
+    var actionKey = "win_reward_equip"
     @ViewBuilder let preview: Preview
 
     var body: some View {
         HStack(spacing: 10) {
             preview
             VStack(alignment: .leading, spacing: 2) {
-                Text(strings["win_reward_title"])
+                Text(strings[titleKey])
                     .font(.game(14, .bold))
                     .foregroundStyle(palette.accent)
-                Text(strings["win_reward_body", name])
+                Text(strings[bodyKey, name])
                     .font(.game(12))
                     .foregroundStyle(palette.textSecondary)
             }
             Spacer()
-            Button(strings["win_reward_equip"], action: onOpenShop)
-                .font(.game(13, .bold))
-                .foregroundStyle(palette.accent)
+            if equipped {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(palette.accent)
+                    Text(strings["win_reward_equipped"])
+                        .font(.game(13, .semibold))
+                        .foregroundStyle(palette.textSecondary)
+                }
+            } else {
+                Button(strings[actionKey], action: onEquip)
+                    .font(.game(13, .bold))
+                    .foregroundStyle(palette.accent)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity)
         .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// A decoration on a patch of its own water - the win card's prize thumbnail.
+struct DecorPreview: View {
+    @Environment(\.palette) private var palette
+    let item: PondCatalog.Decor
+
+    var body: some View {
+        Canvas { ctx, size in
+            drawRoundRectPatch(&ctx, size: size, palette: palette)
+            let side = min(size.width, size.height) * 0.82
+            let rect = CGRect(
+                x: (size.width - side) / 2, y: (size.height - side) / 2,
+                width: side, height: side
+            )
+            drawDecor(&ctx, id: item.id, rect: rect, palette: palette, phase: 0.7)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

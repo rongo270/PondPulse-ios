@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Convert PondPulse's Android strings.xml (16 locales) into generated Swift
 lookup tables (L10nTables.swift). Keys stay identical to Android.
-Android positional %n$s becomes iOS %n$@; \' \" \n unescaped."""
+Android positional %n$s becomes iOS %n$@; \' \" \n unescaped.
+
+<plurals> come across too, as a second table per language keyed
+key -> CLDR quantity -> text. Swift has no plural selector of its own, so
+`Strings.plural` in Strings.swift implements the rules; the categories here are
+whatever the Android XML actually declares."""
 import re
 import xml.etree.ElementTree as ET
 
@@ -40,7 +45,19 @@ def load(dirname):
     return out
 
 
+def load_plurals(dirname):
+    tree = ET.parse(f"{RES}/{dirname}/strings.xml")
+    out = {}
+    for node in tree.getroot().iter("plurals"):
+        out[node.get("name")] = {
+            item.get("quantity"): android_unescape("".join(item.itertext()))
+            for item in node.iter("item")
+        }
+    return out
+
+
 tables = {lang: load(d) for d, lang in LOCALES}
+plural_tables = {lang: load_plurals(d) for d, lang in LOCALES}
 en_keys = set(tables["en"])
 lines = [
     "// GENERATED from the Android res/values*/strings.xml by tools/convert_strings.py — do not edit by hand.",
@@ -59,8 +76,20 @@ for _, lang in LOCALES:
     lines.append("    ]")
     lines.append("}")
     lines.append("")
+for _, lang in LOCALES:
+    table = plural_tables[lang]
+    lines.append("extension L10n {")
+    lines.append(f"    static let {lang}Plurals: [String: [String: String]] = [")
+    for key in sorted(table):
+        forms = ", ".join(
+            f'"{q}": "{swift_escape(table[key][q])}"' for q in sorted(table[key])
+        )
+        lines.append(f'        "{key}": [{forms}],')
+    lines.append("    ]")
+    lines.append("}")
+    lines.append("")
 open(OUT, "w").write("\n".join(lines))
 for _, lang in LOCALES:
     missing = en_keys - set(tables[lang])
     tag = f" (missing {len(missing)}: {sorted(missing)[:4]}…)" if missing else ""
-    print(f"{lang}: {len(tables[lang])} strings{tag}")
+    print(f"{lang}: {len(tables[lang])} strings, {len(plural_tables[lang])} plurals{tag}")
