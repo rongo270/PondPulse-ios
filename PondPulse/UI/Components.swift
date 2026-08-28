@@ -53,10 +53,12 @@ struct PrimaryButton: View {
 struct GhostButton: View {
     @Environment(\.palette) private var palette
     let text: String
+    let enabled: Bool
     let action: () -> Void
 
-    init(_ text: String, action: @escaping () -> Void) {
+    init(_ text: String, enabled: Bool = true, action: @escaping () -> Void) {
         self.text = text
+        self.enabled = enabled
         self.action = action
     }
 
@@ -77,6 +79,61 @@ struct GhostButton: View {
                 .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(SquishyButtonStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+    }
+}
+
+/// Reset, which spends most of its life pretending to be a GhostButton.
+///
+/// Idle it is indistinguishable from the ghost buttons beside it; lit, it fills
+/// with the accent and breathes. That highlight - plus the line above the board -
+/// is what replaced the card that used to cover the pond at a dead end.
+struct PulseButton: View {
+    @Environment(\.palette) private var palette
+    let text: String
+    let highlighted: Bool
+    let action: () -> Void
+
+    @State private var pulsing = false
+
+    init(_ text: String, highlighted: Bool = false, action: @escaping () -> Void) {
+        self.text = text
+        self.highlighted = highlighted
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(.game(15, highlighted ? .bold : .semibold))
+                .foregroundStyle(highlighted ? PondPalette.onAccent : palette.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .padding(.vertical, 13)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity)
+                .background {
+                    if highlighted {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(palette.accent)
+                    } else {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(palette.outline, lineWidth: 1.5)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(SquishyButtonStyle())
+        .scaleEffect(highlighted && pulsing ? 1.06 : 1)
+        .animation(
+            highlighted
+                ? .easeInOut(duration: 0.72).repeatForever(autoreverses: true)
+                : .default,
+            value: pulsing
+        )
+        .onChange(of: highlighted) { _, lit in pulsing = lit }
+        .onAppear { pulsing = highlighted }
     }
 }
 

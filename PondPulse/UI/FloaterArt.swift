@@ -28,6 +28,16 @@ extension Color {
         let c = rgba
         return Color(red: min(c.r * f, 1), green: min(c.g * f, 1), blue: min(c.b * f, 1)).opacity(c.a)
     }
+
+    /// Compose's `lerp(a, b, t)`: this colour blended `t` of the way to `other`.
+    nonisolated func blended(_ other: Color, _ t: CGFloat) -> Color {
+        let a = rgba, b = other.rgba
+        return Color(
+            red: a.r + (b.r - a.r) * t,
+            green: a.g + (b.g - a.g) * t,
+            blue: a.b + (b.b - a.b) * t
+        ).opacity(a.a + (b.a - a.a) * t)
+    }
 }
 
 nonisolated func bodyTint(_ palette: PondPalette, _ color: DuckColor?, _ natural: Color) -> Color {
@@ -116,6 +126,26 @@ nonisolated func drawFloaterSkin(_ ctx: inout GraphicsContext, skinId: String, r
     case "narwhal": drawNarwhal(&ctx, rect, palette, color)
     case "beaver": drawBeaver(&ctx, rect, palette, color)
     case "gosling": drawGosling(&ctx, rect, palette, color)
+    case "tadpole": drawTadpole(&ctx, rect, palette, color)
+    case "snail": drawSnail(&ctx, rect, palette, color)
+    case "crab": drawCrab(&ctx, rect, palette, color)
+    case "heron": drawHeron(&ctx, rect, palette, color)
+    case "goose": drawGoose(&ctx, rect, palette, color)
+    case "capybara": drawCapybara(&ctx, rect, palette, color)
+    case "seal": drawSeal(&ctx, rect, palette, color)
+    case "pelican": drawPelican(&ctx, rect, palette, color)
+    case "kingfisher": drawKingfisher(&ctx, rect, palette, color)
+    case "dragonfly": drawDragonfly(&ctx, rect, palette, color)
+    case "crane": drawPaperCrane(&ctx, rect, palette, color)
+    case "lantern": drawLantern(&ctx, rect, palette, color)
+    case "puffer": drawPufferfish(&ctx, rect, palette, color)
+    case "seahorse": drawSeahorse(&ctx, rect, palette, color)
+    case "octopus": drawOctopus(&ctx, rect, palette, color)
+    case "platypus": drawPlatypus(&ctx, rect, palette, color)
+    case "submarine": drawSubmarine(&ctx, rect, palette, color)
+    case "pixel": drawPixelDuck(&ctx, rect, palette, color)
+    case "phoenix": drawPhoenix(&ctx, rect, palette, color)
+    case "unicorn": drawUnicornDuck(&ctx, rect, palette, color)
     default: drawDuck(&ctx, rect, palette, tint: palette.duckTint(color))
     }
 }
@@ -136,6 +166,14 @@ nonisolated func drawPadStyle(_ ctx: inout GraphicsContext, padId: String, rect:
     case "moon": drawMoonPad(&ctx, rect)
     case "crown": drawCrownPad(&ctx, rect)
     case "aurora": drawAuroraPad(&ctx, rect)
+    case "leaf": drawLeafPad(&ctx, rect)
+    case "mushroom": drawMushroomPad(&ctx, rect)
+    case "stone": drawStonePad(&ctx, rect)
+    case "cloud": drawCloudPad(&ctx, rect)
+    case "nest": drawNestPad(&ctx, rect)
+    case "coralring": drawCoralRingPad(&ctx, rect)
+    case "bubble": drawBubblePad(&ctx, rect)
+    case "sunburst": drawSunburstPad(&ctx, rect)
     default: drawLilyPad(&ctx, rect, palette)
     }
     if let ring {
