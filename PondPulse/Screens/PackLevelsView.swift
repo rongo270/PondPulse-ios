@@ -78,16 +78,19 @@ struct PackLevelsView: View {
                     HStack(spacing: 8) {
                         ForEach(rowLevels, id: \.id) { level in
                             let premiumLocked = vm.isPremiumLevel(level.id) && !vm.isPremium
-                            LevelLeaf(
+                            let number = vm.globalLevelNumber(level.id)
+                            LevelTile(
+                                number: number,
+                                paysPrize: Catalog.rewardLevels.contains(number),
                                 stars: vm.stars[level.id] ?? 0,
                                 unlocked: vm.isUnlocked(level.id),
                                 premiumLocked: premiumLocked,
-                                number: vm.globalLevelNumber(level.id),
                                 current: level.id == currentLevelId
                             ) {
                                 if premiumLocked {
                                     vm.navigate(.shop)
                                 } else {
+                                    vm.replaceTop(.packLevels(packId: packId, focusLevelId: level.id))
                                     vm.navigate(.game(levelId: level.id))
                                 }
                             }
@@ -102,12 +105,20 @@ struct PackLevelsView: View {
                 // The golden pond this stage closes - one per stage, so it reads
                 // as this page's reward rather than a pile at the end of a
                 // seventy-level pack.
+                // The rung this golden pond sits on, and so the prize it pays.
+                let rung = (Levels.bonusPonds.firstIndex { $0.id == stage.bonus.level.id } ?? -1) + 1
+                let prize = Catalog.bonusPrizeAt(rung)
                 BonusPondRow(
                     stars: vm.stars[stage.bonus.level.id] ?? 0,
                     unlocked: vm.isBonusUnlocked(pack, stage.bonus),
+                    prize: prize,
+                    prizeEarned: prize.map {
+                        vm.isOwned(Catalog.unlockOf($0), productId: Catalog.productIdOf($0))
+                    } ?? false,
                     firstLevel: stage.firstLevelNumber,
                     opensAt: stage.lastLevelNumber
                 ) {
+                    vm.replaceTop(.packLevels(packId: packId, focusLevelId: stage.bonus.level.id))
                     vm.navigate(.game(levelId: stage.bonus.level.id))
                 }
 
@@ -218,6 +229,13 @@ private struct BonusPondRow: View {
     @Environment(\.strings) private var strings
     let stars: Int
     let unlocked: Bool
+    /// What this golden pond hands over. Drawn whether it is open or not - a
+    /// locked pond that will not say what it pays is a locked pond nobody has a
+    /// reason to unlock, and hints, which is what these used to give, were never
+    /// worth showing off.
+    let prize: Catalog.Reward?
+    /// Already in the player's hands, so the box records it rather than sells it.
+    let prizeEarned: Bool
     let firstLevel: Int
     let opensAt: Int
     let onPlay: () -> Void
@@ -225,6 +243,7 @@ private struct BonusPondRow: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         Button(action: onPlay) {
+            VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: unlocked ? "trophy.fill" : "lock.fill")
                     .font(.system(size: 19, weight: .semibold))
@@ -250,6 +269,11 @@ private struct BonusPondRow: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let prize {
+                PrizeLine(prize: prize, unlocked: unlocked, earned: prizeEarned)
+            }
+            }
             .background(unlocked ? palette.star.opacity(0.14) : palette.surface, in: shape)
             .overlay {
                 if unlocked { shape.strokeBorder(palette.star.opacity(0.5), lineWidth: 1) }
@@ -309,5 +333,141 @@ private struct StepperButton: View {
                 Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
             }
         }
+    }
+}
+
+/// The prize a golden pond pays, with its own artwork.
+private struct PrizeLine: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let prize: Catalog.Reward
+    let unlocked: Bool
+    let earned: Bool
+
+    var body: some View {
+        // Dimmed while the pond is shut, so it reads as something to come rather
+        // than something on offer, without hiding what it is.
+        let fade: CGFloat = (unlocked || earned) ? 1 : 0.55
+        HStack(spacing: 8) {
+            Group {
+                switch prize {
+                case .skin(let item): SkinPreview(skinId: item.id)
+                case .pad(let item): PadPreview(padId: item.id)
+                case .theme(let item): ThemePreview(palette: item.palette)
+                case .decor(let item): DecorPreview(item: item)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .opacity(fade)
+
+            Text(strings[earned ? "bonus_prize_earned" : "bonus_prize_pays", strings[prize.nameKey]])
+                .font(.game(13, .medium))
+                .foregroundStyle(earned ? palette.star : palette.textSecondary.opacity(fade))
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            if earned {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(palette.star)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 46)
+        .padding(.trailing, 14)
+        .padding(.bottom, 11)
+    }
+}
+
+/// One pond as a plain rounded tile: pad-green once solved, pale while waiting,
+/// faded when locked, ringed in accent for the pond you are up to. It used to be
+/// a hand-drawn lily leaf, which was lovely and cost a square cell - five of
+/// these fit where four leaves did, and a stage that ran three screens now runs
+/// none.
+private struct LevelTile: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let number: Int
+    /// This pond hands over a friend, a sky or a lily pad. Marked on the tile so
+    /// a prize is something you can see coming while you climb, rather than a
+    /// surprise on the way out of a pond you happened to pick.
+    let paysPrize: Bool
+    let stars: Int
+    let unlocked: Bool
+    let premiumLocked: Bool
+    let current: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        let solved = stars > 0
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let fill: Color = solved
+            ? palette.pad
+            : (unlocked || premiumLocked) ? palette.surfaceHigh : palette.surface.opacity(0.5)
+
+        Button(action: onTap) {
+            ZStack {
+                if premiumLocked {
+                    VStack(spacing: 1) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(palette.accent.opacity(0.9))
+                            .accessibilityLabel(strings["level_locked_premium"])
+                        Text("\(number)")
+                            .font(.game(11, .semibold))
+                            .foregroundStyle(palette.textSecondary.opacity(0.8))
+                    }
+                } else if !unlocked {
+                    VStack(spacing: 1) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(palette.textSecondary.opacity(0.55))
+                            .accessibilityLabel(strings["level_locked"])
+                        Text("\(number)")
+                            .font(.game(11, .semibold))
+                            .foregroundStyle(palette.textSecondary.opacity(0.55))
+                    }
+                } else {
+                    VStack(spacing: 2) {
+                        Text("\(number)")
+                            .font(.game(17, .bold))
+                            .foregroundStyle(solved ? .white : palette.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        HStack(spacing: 1) {
+                            ForEach(0..<3, id: \.self) { index in
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(
+                                        index < stars ? palette.star
+                                            : solved ? Color.white.opacity(0.35)
+                                            : palette.textSecondary.opacity(0.25)
+                                    )
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1, contentMode: .fit)
+            .background(fill, in: shape)
+            .overlay(alignment: .topTrailing) {
+                // Only while it is still worth chasing: once the pond is solved
+                // the prize is banked and the marker is just clutter on a
+                // finished tile.
+                if paysPrize && !solved && !premiumLocked {
+                    Image(systemName: "gift.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(palette.accent)
+                        .padding(3)
+                        .accessibilityLabel(strings["level_pays_reward"])
+                }
+            }
+            .overlay {
+                if current { shape.strokeBorder(palette.accent, lineWidth: 2) }
+            }
+        }
+        .buttonStyle(SquishyButtonStyle())
+        .disabled(!(unlocked || premiumLocked))
     }
 }

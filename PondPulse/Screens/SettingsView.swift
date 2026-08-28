@@ -2,9 +2,9 @@
 //  SettingsView.swift
 //  PondPulse
 //
-//  Haptics, the in-app language picker (16 languages, RTL-aware) and the
-//  progress reset. Port of the Android ui/SettingsScreen.kt; the language
-//  choice applies instantly instead of recreating the activity.
+//  Haptics, the testing tools, the in-app language picker (16 languages,
+//  RTL-aware) and the progress reset. Port of the Android ui/SettingsScreen.kt;
+//  the language choice applies instantly instead of recreating the activity.
 //
 
 import SwiftUI
@@ -15,6 +15,28 @@ struct SettingsView: View {
     @Environment(\.strings) private var strings
     @State private var confirmReset = false
     @State private var pickLanguage = false
+
+    /// Testing tools. A debug build has always had them; a release build only
+    /// does while `FreeMode.enabled`, which is what a closed-testing build is.
+    /// Turning that flag off takes the whole section out again, so a shipped
+    /// pond can never grow a level skipper.
+    private var showsTesting: Bool {
+        #if DEBUG
+        return true
+        #else
+        return FreeMode.enabled
+        #endif
+    }
+
+    /// In a debug build the skipper is a developer tool; in a closed-testing
+    /// release it is the one thing a tester is being handed.
+    private var skipperDescKey: String {
+        #if DEBUG
+        return "settings_debug_desc"
+        #else
+        return "settings_skipper_desc"
+        #endif
+    }
 
     var body: some View {
         content
@@ -43,6 +65,36 @@ struct SettingsView: View {
                                 .tint(palette.accent)
                         }
                         .padding(.bottom, 14)
+
+                        if showsTesting {
+                            Divider().overlay(palette.textSecondary.opacity(0.15))
+
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(strings["settings_testing"])
+                                    .font(.game(14, .bold))
+                                    .foregroundStyle(palette.accent)
+                                Text(strings["settings_testing_desc"])
+                                    .font(.game(12))
+                                    .foregroundStyle(palette.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.bottom, 12)
+
+                                settingToggle(
+                                    title: strings["settings_unlock_all"],
+                                    desc: strings["settings_unlock_all_desc"],
+                                    isOn: Binding(get: { vm.unlockAllFlag }, set: { vm.setUnlockAll($0) })
+                                )
+                                settingToggle(
+                                    title: strings["settings_debug"],
+                                    desc: strings[skipperDescKey],
+                                    isOn: Binding(get: { vm.debugTools }, set: { vm.setDebugTools($0) })
+                                )
+                                .padding(.top, 12)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 14)
+                            .padding(.bottom, 14)
+                        }
 
                         Divider().overlay(palette.textSecondary.opacity(0.15))
 
@@ -111,6 +163,26 @@ struct SettingsView: View {
             Button(strings["settings_reset_confirm_no"], role: .cancel) {}
         } message: {
             Text(strings["settings_reset_confirm_body"])
+        }
+    }
+}
+
+extension SettingsView {
+    fileprivate func settingToggle(title: String, desc: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.game(15, .semibold))
+                    .foregroundStyle(palette.textPrimary)
+                Text(desc)
+                    .font(.game(12))
+                    .foregroundStyle(palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(palette.accent)
         }
     }
 }

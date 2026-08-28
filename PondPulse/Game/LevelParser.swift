@@ -16,17 +16,22 @@ import Foundation
 
 nonisolated enum LevelParser {
 
-    /// How many splashes a level hands out: par plus the map's `slack`, with a
-    /// floor of three.
+    /// How many splashes a level hands out: par plus the map's `slack`.
     ///
-    /// Numbered levels all use exactly three, which lines the budget up with the
-    /// star bands - three stars at par, two for a splash or two over, one for
-    /// scraping home on the last drop, and then you are out of water. A pond you
-    /// can flail at for nine extra splashes isn't asking you anything, and since
-    /// a docked duckling now stays docked, a roomy budget let you feel your way
-    /// to the answer one splash at a time instead of reading the pond. Bonus
+    /// Most numbered levels use exactly three, which lines the budget up with
+    /// the star bands - three stars at par, two for a splash or two over, one
+    /// for scraping home on the last drop, and then you are out of water. A pond
+    /// you can flail at for nine extra splashes isn't asking you anything, and
+    /// since a docked duckling now stays docked, a roomy budget let you feel your
+    /// way to the answer one splash at a time instead of reading the pond. Bonus
     /// ponds pass a much bigger slack on purpose - they are a reward, not a test.
-    static func budget(_ par: Int, _ slack: Int) -> Int { par + max(slack, 3) }
+    ///
+    /// A handful of early ponds pass **zero** slack, making the budget exactly
+    /// par: they are finished only by finding the shortest line, so they are
+    /// three stars or nothing. That asks a real question on a small board
+    /// without crowding it with pieces. It is deliberately kept off any pond
+    /// carrying a teaching tip - a lesson has to forgive.
+    static func budget(_ par: Int, _ slack: Int) -> Int { par + max(slack, 0) }
 
     static func parse(
         id: String,
