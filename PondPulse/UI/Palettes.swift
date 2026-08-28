@@ -11,7 +11,11 @@ import SwiftUI
 
 extension Color {
     /// `Color(hex: 0x17607F)` - same literals as the Android palettes.
-    init(hex: UInt32) {
+    ///
+    /// `nonisolated` because the project defaults every declaration to the main
+    /// actor, and every one of these literals is written down inside a
+    /// `nonisolated` drawing function - the scenery, the friends, the pads.
+    nonisolated init(hex: UInt32) {
         self.init(
             red: Double((hex >> 16) & 0xFF) / 255,
             green: Double((hex >> 8) & 0xFF) / 255,
@@ -20,7 +24,11 @@ extension Color {
     }
 }
 
-struct PondPalette {
+/// `nonisolated` in full: a palette is twenty-five colours and two lookups over
+/// them, and the whole point of it is to be read from the `nonisolated` draw
+/// functions that paint the pond. Nothing here touches UI state, so nothing here
+/// needs the main actor the project hands out by default.
+nonisolated struct PondPalette {
     let isDark: Bool
     let background: Color
     let backgroundHigh: Color

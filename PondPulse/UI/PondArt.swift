@@ -598,9 +598,9 @@ nonisolated func drawPondWater(_ ctx: inout GraphicsContext, weatherId: String, 
 // a rectangle of grass reads as a swimming pool, and the whole screen is about
 // a pond you would want to sit beside.
 
-private let shoreTopFraction: CGFloat = 0.155
-private let shoreBottomFraction: CGFloat = 0.845
-private let shoreWave: CGFloat = 0.013
+nonisolated private let shoreTopFraction: CGFloat = 0.155
+nonisolated private let shoreBottomFraction: CGFloat = 0.845
+nonisolated private let shoreWave: CGFloat = 0.013
 
 /// The far shoreline's y, in height fractions, at `x` in width fractions.
 nonisolated func shoreTopAt(_ x: CGFloat) -> CGFloat {

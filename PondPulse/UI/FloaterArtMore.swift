@@ -393,7 +393,7 @@ nonisolated func drawDragonfly(_ ctx: inout GraphicsContext, _ rect: CGRect, _ p
     // Two pairs of wings, swept apart so the count reads.
     for dy in [-1.0, 1.0] as [CGFloat] {
         for dx in [-0.02, 0.20] as [CGFloat] {
-            var rc = rotated(ctx, degrees: dy * 17, pivot: c)
+            let rc = rotated(ctx, degrees: dy * 17, pivot: c)
             rc.fill(
                 oval(
                     CGPoint(x: c.x + cell * (dx - 0.30), y: c.y + dy * cell * 0.05 - cell * 0.05),

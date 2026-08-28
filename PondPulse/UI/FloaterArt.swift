@@ -649,7 +649,7 @@ nonisolated private func drawBeaver(_ ctx: inout GraphicsContext, _ rect: CGRect
     let dark = fur.shaded(0.75)
     let muzzle = fur.lightened(1.3)
     // Flat cross-hatched tail sweeping back-left.
-    var tailCtx = rotated(ctx, degrees: -28, pivot: CGPoint(x: c.x - cell * 0.30, y: c.y + cell * 0.10))
+    let tailCtx = rotated(ctx, degrees: -28, pivot: CGPoint(x: c.x - cell * 0.30, y: c.y + cell * 0.10))
     tailCtx.fill(
         Path(roundedRect: CGRect(x: c.x - cell * 0.52, y: c.y + cell * 0.02, width: cell * 0.30, height: cell * 0.17), cornerRadius: cell * 0.08),
         with: .color(dark)
