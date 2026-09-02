@@ -490,6 +490,11 @@ final class AppViewModel: ObservableObject {
             dailyClears: dailyTotal,
             bestStreak: dailyBestStreak,
             bestRush: rushBests.values.max() ?? 0,
+            // A best of zero is a game nobody has scored in, which is the only
+            // "have you played this" the pond stores - and the right one: a run
+            // that ended on nothing is a game opened, not a game played.
+            gamesPlayed: miniBests.values.count { $0 > 0 },
+            gamesTotal: miniBests.values.reduce(0, +),
             friendsOwned: ownedSkinIds().count,
             decorOwned: PondCatalog.decor.count { isDecorOwned($0) }
         )

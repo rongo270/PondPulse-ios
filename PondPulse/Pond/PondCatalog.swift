@@ -231,8 +231,34 @@ enum PondCatalog {
 
     static func gameById(_ id: String) -> MiniGame? { games.first { $0.id == id } }
 
+    /// How much more a run pays than the rate the four games were tuned at.
+    ///
+    /// The games are the pond's only earner and the original tuning was stingy
+    /// enough to read as mean rather than as restraint - a run that played
+    /// perfectly was worth a tenth of the week. Everything a run can pay goes up
+    /// by a fifth, and `CoinBank.pondWeeklyCap` goes up by the same fifth: a
+    /// raise under an unchanged ceiling only ever reaches the players who were
+    /// not hitting the ceiling anyway.
+    ///
+    /// Written as a fraction rather than as `1.2`, and applied with integer
+    /// division, because the whole point of a multiplier here is that it lands
+    /// on a whole coin: `Int(Double(10) * 1.2)` is arithmetic that can pay 11
+    /// on one build and 12 on the next, and coins are the one number in the app
+    /// nobody should have to take on trust.
+    static let payoutBoost = (times: 6, over: 5)
+
+    /// `coins` at the boosted rate.
+    ///
+    /// Rounded up rather than to nearest, so the smallest run that earned
+    /// anything at all still earns it - a raise that rounded a single coin back
+    /// down to none would be a pay cut for exactly the player it was for.
+    static func boosted(_ coins: Int) -> Int {
+        guard coins > 0 else { return 0 }
+        return (coins * payoutBoost.times + payoutBoost.over - 1) / payoutBoost.over
+    }
+
     /// A run's coins before the week's ceiling is applied.
     static func coinsFor(_ game: MiniGame, score: Int) -> Int {
-        min(max(score, 0) / game.coinsPerPoint, game.coinCap)
+        boosted(min(max(score, 0) / game.coinsPerPoint, game.coinCap))
     }
 }

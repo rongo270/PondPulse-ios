@@ -62,7 +62,7 @@ enum CoinBank {
     /// can replay forever, so without a ceiling the cheapest of them would set
     /// the price of everything in the shop. With one, a keen player empties the
     /// week in an afternoon and the pond goes back to being a pond.
-    static let pondWeeklyCap = 100
+    static let pondWeeklyCap = PondCatalog.boosted(100)
 
     // MARK: - Spending
 

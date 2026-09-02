@@ -108,7 +108,10 @@ private final class PondMotion {
     var friends: [PondFriend] = []
     var splashes: [PondSplash] = []
     var lastTick: Date?
-    var lastSize: CGSize = .zero
+    /// The box the pond is drawn in, in canvas coordinates. The canvas itself
+    /// runs under the status bar and the home indicator; this is the part of it
+    /// the scene actually uses, and taps are read against it.
+    var lastScene: CGRect = .zero
 
     /// Keeps the water in step with the cast without restarting anybody: a
     /// friend still in the pond keeps the position it had, so opening the picker
@@ -199,6 +202,16 @@ struct PondView: View {
     @State private var panel: PondPanelKind = .none
     @State private var motion = PondMotion()
 
+    /// Where the safe area sits in the window - measured, not asked for.
+    ///
+    /// The canvas draws to the glass on purpose, and a `GeometryReader` inside
+    /// `.ignoresSafeArea()` answers zero for `safeAreaInsets`: by then there is
+    /// no safe area left for it to report. The probe below is laid out in the
+    /// safe area like everything else on the screen, so where it lands in the
+    /// window *is* the inset - and it is measured on every phone rather than
+    /// guessed from a list of them.
+    @State private var safeFrame: CGRect = .zero
+
     var body: some View {
         let cast = vm.pondCast()
         // Asked of the view model rather than of the owned set: a decoration
@@ -214,15 +227,33 @@ struct PondView: View {
         ZStack {
             pondCanvas(cast: cast, decorOwned: decorOwned)
 
+            Color.clear
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { safeFrame = $0 }
+                .allowsHitTesting(false)
+
             // A soft scrim under the bars. The pond grew a bank the player can
             // put a dock or a willow on, and white-on-grass is not text you can
             // read.
+            //
+            // It runs to the glass at both ends, not just the bottom: the scene
+            // steps back from the notch and the strip behind it is bare bank, so
+            // a scrim that started at the safe area drew a hard line across the
+            // grass exactly where the pond was trying not to have one.
             VStack {
+                // Full strength as far down as the status bar, then the same
+                // 96-point fade the header has always sat in: stretching the
+                // fade over the notch instead would have thinned it exactly
+                // where the title is.
+                let hold = max(safeFrame.minY, 0)
                 LinearGradient(
-                    colors: [palette.background.opacity(0.65), .clear],
+                    stops: [
+                        .init(color: palette.background.opacity(0.65), location: 0),
+                        .init(color: palette.background.opacity(0.65), location: hold / (hold + 96)),
+                        .init(color: .clear, location: 1),
+                    ],
                     startPoint: .top, endPoint: .bottom
                 )
-                .frame(height: 96)
+                .frame(height: hold + 96)
                 Spacer()
                 LinearGradient(
                     colors: [.clear, palette.background.opacity(0.65)],
@@ -231,7 +262,7 @@ struct PondView: View {
                 .frame(height: 132)
             }
             .allowsHitTesting(false)
-            .ignoresSafeArea(edges: .bottom)
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack {
@@ -275,8 +306,25 @@ struct PondView: View {
 
     private func pondCanvas(cast: [String], decorOwned: [PondCatalog.Decor]) -> some View {
         TimelineView(.animation) { timeline in
-            Canvas { ctx, size in
-                motion.lastSize = size
+            Canvas { ctx, canvas in
+                // The canvas runs to the glass; the scene inside it steps back
+                // from the notch and the home indicator, and the strips it
+                // leaves are painted in the bank's own colour so the grass still
+                // reaches both edges.
+                let measured = safeFrame.height > 0
+                let scene = pondSceneRect(
+                    canvas: canvas,
+                    top: measured ? safeFrame.minY : 0,
+                    bottom: measured ? max(canvas.height - safeFrame.maxY, 0) : 0
+                )
+                motion.lastScene = scene
+                drawPondBleed(&ctx, canvas: canvas, scene: scene, shoreId: vm.pondShore, palette: palette)
+                // Kept unshifted for the weather, which is sky and belongs to
+                // the whole screen rather than to the pond in it.
+                var sky = ctx
+                ctx.translateBy(x: scene.minX, y: scene.minY)
+
+                let size = scene.size
                 motion.sync(cast: cast)
                 motion.step(to: timeline.date)
                 let time = motion.time
@@ -287,7 +335,11 @@ struct PondView: View {
                               waterId: vm.pondWater, shoreId: vm.pondShore)
 
                 for item in decorOwned {
-                    let at = vm.decorSpots[item.id] ?? item.at
+                    let at = decorSpot(
+                        zone: item.zone,
+                        at: vm.decorSpots[item.id] ?? item.at,
+                        scale: item.scale, in: size
+                    )
                     let side = w * item.scale
                     // Only what floats bobs. A bench that breathed would be
                     // worse than a bench that did not move at all.
@@ -340,15 +392,20 @@ struct PondView: View {
                     )
                 }
 
-                drawWeather(&ctx, id: vm.pondWeather, size: size, palette: palette, time: time)
+                drawWeather(&sky, id: vm.pondWeather, size: canvas, palette: palette, time: time)
             }
         }
         .ignoresSafeArea()
         .contentShape(Rectangle())
         .onTapGesture { point in
-            let size = motion.lastSize
-            guard size.width > 0, size.height > 0 else { return }
-            let at = CGPoint(x: point.x / size.width, y: point.y / size.height)
+            let scene = motion.lastScene
+            guard scene.width > 0, scene.height > 0 else { return }
+            // A tap on the strip behind the notch still lands in the pond, at
+            // the nearest place there is water to splash.
+            let at = CGPoint(
+                x: min(max((point.x - scene.minX) / scene.width, 0), 1),
+                y: min(max((point.y - scene.minY) / scene.height, 0), 1)
+            )
             motion.splashes.append(PondSplash(at: at, born: motion.time))
             motion.shove(at: at)
             Haptics.tick(enabled: vm.haptics)

@@ -88,9 +88,6 @@ private enum DecorFilter: String, Hashable, CaseIterable, Identifiable {
     }
 }
 
-/// How far onto the grass a shore item's middle must sit.
-private let shoreMargin: CGFloat = 0.018
-
 /// True if `at` lands on `item` drawn at `spot`, both in pond fractions.
 private func hits(_ item: PondCatalog.Decor, spot: CGPoint, at: CGPoint, aspect: CGFloat) -> Bool {
     let halfX = item.scale * 0.55
@@ -98,36 +95,16 @@ private func hits(_ item: PondCatalog.Decor, spot: CGPoint, at: CGPoint, aspect:
     return abs(at.x - spot.x) <= halfX && abs(at.y - spot.y) <= halfY
 }
 
-/// Pulls `at` back to somewhere `item` is allowed to be.
+/// Pulls `at` back to somewhere `item` is allowed to be, in a pond of this
+/// shape - `decorSpot`, which My Pond draws through as well, so a thing put
+/// somewhere here is somewhere it fits there too.
 ///
-/// Done while the finger is down rather than on release so the rule shows
+/// Applied while the finger is down rather than on release so the rule shows
 /// itself: a dock dragged out over the water follows the finger sideways but
 /// stays glued to the bank, which says "not there" far better than a message
 /// would.
-private func clampToZone(_ item: PondCatalog.Decor, _ at: CGPoint, _ aspect: CGFloat) -> CGPoint {
-    let halfY = item.scale * 0.5 / aspect
-    let x = min(max(at.x, 0.05), 0.95)
-    let top = shoreTopAt(x)
-    let bottom = shoreBottomAt(x)
-    let y: CGFloat
-    switch item.zone {
-    case .water:
-        let inset = min(halfY, (bottom - top) * 0.45)
-        y = min(max(at.y, top + inset), bottom - inset)
-    case .shore:
-        let nearTop = max(top - shoreMargin, halfY * 0.45)
-        let nearBottom = min(bottom + shoreMargin, 1 - halfY * 0.45)
-        if at.y <= top - shoreMargin {
-            y = max(at.y, halfY * 0.45)
-        } else if at.y >= bottom + shoreMargin {
-            y = min(at.y, 1 - halfY * 0.45)
-        } else if at.y - top < bottom - at.y {
-            y = nearTop
-        } else {
-            y = nearBottom
-        }
-    }
-    return CGPoint(x: x, y: y)
+private func clampToZone(_ item: PondCatalog.Decor, _ at: CGPoint, _ size: CGSize) -> CGPoint {
+    decorSpot(zone: item.zone, at: at, scale: item.scale, in: size)
 }
 
 /// One clock for the whole scene, and the canvas size the gestures need - the
@@ -188,10 +165,22 @@ struct DecorateView: View {
         PondCatalog.decor.filter { vm.isDecorOwned($0) && !vm.decorStored.contains($0.id) }
     }
 
+    /// Where `item` is drawn, ring, hit box and all.
+    ///
+    /// Everything goes through `clampToZone`, not just what is being dragged:
+    /// the catalogue's own anchors put the pier and the hammock half off the
+    /// top and bottom of a tall screen, and a decoration nobody has ever
+    /// touched should not be the one that is cut in half.
     private func spotOf(_ item: PondCatalog.Decor) -> CGPoint {
-        if item.id == dragId { return dragAt }
-        if !vm.isDecorOwned(item) { return ghostAt ?? item.at }
-        return justPlaced[item.id] ?? vm.decorSpots[item.id] ?? item.at
+        let raw: CGPoint
+        if item.id == dragId {
+            raw = dragAt
+        } else if !vm.isDecorOwned(item) {
+            raw = ghostAt ?? item.at
+        } else {
+            raw = justPlaced[item.id] ?? vm.decorSpots[item.id] ?? item.at
+        }
+        return clampToZone(item, raw, motion.lastSize)
     }
 
     /// The selected item, if it is one the player does not own yet - the ghost.
@@ -336,7 +325,7 @@ struct DecorateView: View {
                     }
                     guard let id = dragId, let item = PondCatalog.decorById(id),
                           let at = fraction(value.location) else { return }
-                    dragAt = clampToZone(item, at, aspect)
+                    dragAt = clampToZone(item, at, motion.lastSize)
                 }
                 .onEnded { _ in
                     guard let id = dragId else { return }

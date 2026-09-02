@@ -34,7 +34,7 @@ enum Achievements {
 
     /// The six things a player can be getting better at.
     enum Family: String, CaseIterable {
-        case ponds, stars, golden, daily, rush, pond
+        case ponds, stars, golden, daily, rush, games, pond
 
         var titleKey: String {
             switch self {
@@ -43,6 +43,7 @@ enum Achievements {
             case .golden: return "ach_family_golden"
             case .daily: return "ach_family_daily"
             case .rush: return "ach_family_rush"
+            case .games: return "ach_family_games"
             case .pond: return "ach_family_pond"
             }
         }
@@ -58,6 +59,7 @@ enum Achievements {
             case .golden: return "crown.fill"
             case .daily: return "flame.fill"
             case .rush: return "bolt.fill"
+            case .games: return "gamecontroller.fill"
             case .pond: return "pawprint.fill"
             }
         }
@@ -75,6 +77,10 @@ enum Achievements {
         var dailyClears = 0
         var bestStreak = 0
         var bestRush = 0
+        /// How many of the pond's four games have ever been scored in.
+        var gamesPlayed = 0
+        /// The four games' best scores added together.
+        var gamesTotal = 0
         var friendsOwned = 0
         var decorOwned = 0
     }
@@ -149,6 +155,24 @@ enum Achievements {
         badge("rush_2", .rush, "ach_rush_2", "ach_desc_rush", 75, 1) { $0.bestRush },
         badge("rush_3", .rush, "ach_rush_3", "ach_desc_rush", 175, 2) { $0.bestRush },
         badge("rush_4", .rush, "ach_rush_4", "ach_desc_rush", 350, 3) { $0.bestRush },
+
+        // --- the pond's four games ------------------------------------------
+        // Breadth first, then depth. The four games score in four different
+        // currencies - buds popped, ducklings home, rounds survived, hits - so a
+        // badge on any single one of them would be a badge about whichever game
+        // happened to hand out the biggest numbers. Playing all four is one
+        // milestone and the four bests added up is the other, which is the only
+        // fair way to ask "how good are you at the pond's games" when the games
+        // do not agree on what a point is.
+        badge("games_1", .games, "ach_games_1", "ach_desc_games_played", 1, 0) { $0.gamesPlayed },
+        badge("games_2", .games, "ach_games_2", "ach_desc_games_played", 4, 1) { $0.gamesPlayed },
+        // 90 is roughly the score that maxes every game's coin payout, and 200
+        // is well past it in all four: Ripple Chain's quota is 1 + 2r a round,
+        // so its own best alone is a square number and a strong run there is
+        // half the target on its own - which is exactly why the other three
+        // have to be in it too.
+        badge("games_3", .games, "ach_games_3", "ach_desc_games_score", 90, 2) { $0.gamesTotal },
+        badge("games_4", .games, "ach_games_4", "ach_desc_games_score", 200, 3) { $0.gamesTotal },
 
         // --- the pond you keep ---------------------------------------------
         badge("pond_1", .pond, "ach_pond_1", "ach_desc_friends", 10, 0) { $0.friendsOwned },

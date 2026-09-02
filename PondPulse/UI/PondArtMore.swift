@@ -816,6 +816,36 @@ nonisolated func drawWaterDetail(
 
 // MARK: - Shores
 
+/// The two tones a bank's ground is built from: light at the top and bottom of
+/// the frame, dark through the middle.
+///
+/// One function rather than a pair of constants inside each drawing, because
+/// the strip painted behind the notch and the home indicator has to be the
+/// *same* colour the ground gradient starts and ends on - if it is a shade out,
+/// the seam is a line across the grass.
+nonisolated func shoreTones(_ shoreId: String, _ palette: PondPalette) -> (light: Color, dark: Color) {
+    switch shoreId {
+    case "sand":
+        return (Color(hex: 0xF0DDB4).blended(palette.rock, 0.14),
+                Color(hex: 0xDCC08C).blended(palette.rock, 0.18))
+    case "pebbles":
+        return (palette.rock.blended(Color(hex: 0xB8BFC4), 0.35),
+                palette.rockDark.blended(Color(hex: 0x6E767C), 0.35))
+    case "moss":
+        return (palette.pad.blended(Color(hex: 0x4E7A3A), 0.45),
+                palette.padDark.blended(Color(hex: 0x23401F), 0.45))
+    case "snow":
+        return (Color.white.blended(palette.ripple, 0.10),
+                Color(hex: 0xD7E6F0).blended(palette.waterRim, 0.16))
+    case "autumn":
+        return (Color(hex: 0x8A6236).blended(palette.rockDark, 0.30),
+                Color(hex: 0x5E4224).blended(palette.rockDark, 0.35))
+    default:
+        let grass = palette.padDark.blended(Color(hex: 0x2E4A22), 0.35)
+        return (palette.pad.blended(grass, 0.45), grass)
+    }
+}
+
 /// The bank the pond sits in.
 ///
 /// Every one of them paints a ground gradient and then scatters something over
@@ -862,8 +892,7 @@ nonisolated private func scatterAt(_ i: Int, _ spread: CGFloat) -> (CGFloat, CGF
 
 /// Pale sand, with drift ripples and a scatter of shells.
 nonisolated private func drawSandShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette) {
-    let light = Color(hex: 0xF0DDB4).blended(palette.rock, 0.14)
-    let dark = Color(hex: 0xDCC08C).blended(palette.rock, 0.18)
+    let (light, dark) = shoreTones("sand", palette)
     drawGround(&ctx, size, light, dark)
     let w = size.width, h = size.height
 
@@ -892,8 +921,7 @@ nonisolated private func drawSandShore(_ ctx: inout GraphicsContext, _ size: CGS
 
 /// Grey shingle: two sizes of stone, packed tightest at the waterline.
 nonisolated private func drawPebbleShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette) {
-    let light = palette.rock.blended(Color(hex: 0xB8BFC4), 0.35)
-    let dark = palette.rockDark.blended(Color(hex: 0x6E767C), 0.35)
+    let (light, dark) = shoreTones("pebbles", palette)
     drawGround(&ctx, size, light, dark)
     let w = size.width, h = size.height
     for i in 0..<88 {
@@ -915,8 +943,7 @@ nonisolated private func drawPebbleShore(_ ctx: inout GraphicsContext, _ size: C
 
 /// Deep moss, with fern fronds and a few cushions.
 nonisolated private func drawMossShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette, _ time: CGFloat) {
-    let light = palette.pad.blended(Color(hex: 0x4E7A3A), 0.45)
-    let dark = palette.padDark.blended(Color(hex: 0x23401F), 0.45)
+    let (light, dark) = shoreTones("moss", palette)
     drawGround(&ctx, size, light, dark)
     let w = size.width, h = size.height
 
@@ -955,8 +982,7 @@ nonisolated private func drawMossShore(_ ctx: inout GraphicsContext, _ size: CGS
 
 /// Fresh snow, drifted against the shoreline, with bare twigs poking through.
 nonisolated private func drawSnowShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette) {
-    let light = Color.white.blended(palette.ripple, 0.10)
-    let dark = Color(hex: 0xD7E6F0).blended(palette.waterRim, 0.16)
+    let (light, dark) = shoreTones("snow", palette)
     drawGround(&ctx, size, light, dark)
     let w = size.width, h = size.height
 
@@ -997,8 +1023,7 @@ nonisolated private func drawSnowShore(_ ctx: inout GraphicsContext, _ size: CGS
 
 /// Fallen leaves over dark earth, drifting a little where they lie.
 nonisolated private func drawAutumnShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette, _ time: CGFloat) {
-    let light = Color(hex: 0x8A6236).blended(palette.rockDark, 0.30)
-    let dark = Color(hex: 0x5E4224).blended(palette.rockDark, 0.35)
+    let (light, dark) = shoreTones("autumn", palette)
     drawGround(&ctx, size, light, dark)
     let w = size.width, h = size.height
     // Leaves keep their own reds and golds: an autumn bank tinted to a blue

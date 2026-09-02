@@ -637,6 +637,112 @@ nonisolated func isOverWater(_ at: CGPoint) -> Bool {
     at.y > shoreTopAt(at.x) && at.y < shoreBottomAt(at.x)
 }
 
+// MARK: - Fitting the scene to the glass
+
+/// The least the scene gives back at each end.
+///
+/// A phone with no notch still has a rounded corner and a hand holding it, and
+/// a bank drawn hard against the glass reads as a photo somebody cropped.
+nonisolated private let sceneEdge: CGFloat = 12
+
+/// The box the pond is drawn in, inside a canvas that runs to the glass.
+///
+/// The canvas stays full-bleed - the pond carrying on past the phone is most of
+/// the charm, and the grass behind the notch is painted by `drawPondBleed` - but
+/// the *scene* is inset by whatever the status bar and the home indicator are
+/// covering. Everything on the far bank lives in the top sixth of the scene, so
+/// on a phone with a Dynamic Island that sixth used to be half under the clock,
+/// and a dock or a gnome standing in it was sliced off by the top of the screen.
+///
+/// The insets are capped at a quarter of the height between them, so a short
+/// screen - a small phone in landscape, or an iPad in Slide Over - gives back
+/// less rather than turning the pond into a letterbox.
+nonisolated func pondSceneRect(canvas: CGSize, top: CGFloat, bottom: CGFloat) -> CGRect {
+    let wanted = max(top, sceneEdge) + max(bottom, sceneEdge)
+    guard wanted > 0, canvas.height > 0 else {
+        return CGRect(origin: .zero, size: canvas)
+    }
+    let room = min(wanted, canvas.height * 0.25)
+    let scale = room / wanted
+    return CGRect(
+        x: 0, y: max(top, sceneEdge) * scale,
+        width: canvas.width, height: canvas.height - room
+    )
+}
+
+/// Paints the strips above and below the scene in the bank's own edge colour.
+///
+/// `drawGround`'s gradient both starts and ends on exactly this colour, and
+/// every scattered thing a bank draws is placed relative to a shoreline and
+/// skipped once it leaves the frame, so the two seams have nothing to give them
+/// away: the grass simply runs to the glass.
+nonisolated func drawPondBleed(
+    _ ctx: inout GraphicsContext,
+    canvas: CGSize,
+    scene: CGRect,
+    shoreId: String,
+    palette: PondPalette
+) {
+    let edge = shoreTones(shoreId, palette).light
+    if scene.minY > 0 {
+        ctx.fill(Path(CGRect(x: 0, y: 0, width: canvas.width, height: scene.minY)), with: .color(edge))
+    }
+    if scene.maxY < canvas.height {
+        ctx.fill(
+            Path(CGRect(x: 0, y: scene.maxY, width: canvas.width, height: canvas.height - scene.maxY)),
+            with: .color(edge)
+        )
+    }
+}
+
+/// How far onto the grass a shore item's middle must sit.
+nonisolated let decorShoreMargin: CGFloat = 0.018
+
+/// Where a decoration is actually allowed to sit in a pond of this shape.
+///
+/// Two rules, and both of them are about a thing you can see. The zone is the
+/// old one: a dock floating in open water and a lily stranded on grass both read
+/// as bugs, so a shore item over the water slides to the nearer bank and a water
+/// item on the grass slides back in.
+///
+/// The frame is the new one. Positions are fractions of the pond but sizes are
+/// fractions of its *width*, so how much room a thing needs vertically depends
+/// entirely on the shape of the screen it lands on - the same 0.34-wide pier is
+/// a third of the width everywhere and anything from a fifth to a quarter of the
+/// height. The catalogue's anchors sit the bank furniture 5-7% from the top and
+/// bottom, which fits nothing taller than a gnome, and on a tall phone the dock,
+/// the fence, the hammock and the swing were all walking off the edge. Clamping
+/// by half the drawn size keeps every one of them whole on every screen.
+nonisolated func decorSpot(
+    zone: PondCatalog.Zone, at: CGPoint, scale: CGFloat, in size: CGSize
+) -> CGPoint {
+    guard size.width > 0, size.height > 0 else { return at }
+    let halfX = min(scale * 0.5, 0.5)
+    let halfY = min(scale * 0.5 * size.width / size.height, 0.5)
+    let x = min(max(at.x, halfX), 1 - halfX)
+    let top = shoreTopAt(x)
+    let bottom = shoreBottomAt(x)
+    let y: CGFloat
+    switch zone {
+    case .water:
+        let inset = min(halfY, (bottom - top) * 0.45)
+        y = min(max(at.y, top + inset), bottom - inset)
+    case .shore:
+        let nearTop = max(top - decorShoreMargin, halfY)
+        let nearBottom = min(bottom + decorShoreMargin, 1 - halfY)
+        if at.y <= top - decorShoreMargin {
+            y = max(at.y, halfY)
+        } else if at.y >= bottom + decorShoreMargin {
+            y = min(at.y, 1 - halfY)
+        } else if at.y - top < bottom - at.y {
+            y = nearTop
+        } else {
+            y = nearBottom
+        }
+    }
+    return CGPoint(x: x, y: y)
+}
+
 /// The water's outline, in pixels, for clipping and for its rim.
 nonisolated private func waterPath(_ w: CGFloat, _ h: CGFloat) -> Path {
     let steps = 28
@@ -684,8 +790,7 @@ nonisolated func drawPondBasin(
 nonisolated func drawMeadowShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette, _ time: CGFloat) {
     let w = size.width
     let h = size.height
-    let grass = palette.padDark.blended(Color(hex: 0x2E4A22), 0.35)
-    let grassLit = palette.pad.blended(grass, 0.45)
+    let (grassLit, grass) = shoreTones("meadow", palette)
     ctx.fill(
         Path(CGRect(origin: .zero, size: size)),
         with: .linearGradient(
