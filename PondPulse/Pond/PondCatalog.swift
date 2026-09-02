@@ -105,7 +105,25 @@ enum PondCatalog {
         Decor("spring", "decor_spring", 280, .water, CGPoint(x: 0.50, y: 0.26), 0.18),
         Decor("boat", "decor_boat", 320, .water, CGPoint(x: 0.30, y: 0.44), 0.27),
         Decor("willow", "decor_willow", 380, .shore, CGPoint(x: 0.82, y: 0.90), 0.33),
-    ]
+
+        // The second shelf. Fourteen more, none of them on the golden-pond
+        // ladder: all thirty rungs were already spoken for, and moving one
+        // would revoke a prize somebody has already earned.
+        Decor("gnome", "decor_gnome", 70, .shore, CGPoint(x: 0.66, y: 0.055), 0.12),
+        Decor("cattails", "decor_cattails", 95, .water, CGPoint(x: 0.07, y: 0.62), 0.19),
+        Decor("mailbox", "decor_mailbox", 110, .shore, CGPoint(x: 0.06, y: 0.93), 0.14),
+        Decor("koi", "decor_koi", 140, .water, CGPoint(x: 0.45, y: 0.58), 0.24),
+        Decor("picnic", "decor_picnic", 175, .shore, CGPoint(x: 0.42, y: 0.055), 0.24),
+        Decor("swans", "decor_swans", 195, .water, CGPoint(x: 0.66, y: 0.42), 0.26),
+        Decor("hammock", "decor_hammock", 210, .shore, CGPoint(x: 0.60, y: 0.94), 0.29),
+        Decor("firepit", "decor_firepit", 235, .shore, CGPoint(x: 0.10, y: 0.055), 0.18),
+        Decor("fountain", "decor_fountain", 255, .water, CGPoint(x: 0.50, y: 0.36), 0.22),
+        Decor("swing", "decor_swing", 270, .shore, CGPoint(x: 0.90, y: 0.94), 0.26),
+        Decor("arch", "decor_arch", 295, .shore, CGPoint(x: 0.50, y: 0.055), 0.26),
+        Decor("canoe", "decor_canoe", 310, .water, CGPoint(x: 0.20, y: 0.34), 0.30),
+        Decor("waterwheel", "decor_waterwheel", 350, .water, CGPoint(x: 0.90, y: 0.60), 0.26),
+        Decor("pier", "decor_pier", 400, .shore, CGPoint(x: 0.14, y: 0.075), 0.34),
+    ].sorted { $0.price < $1.price }
 
     /// Day is free and is what a new pond looks like; the rest are bought. The
     /// order is the order they appear in the pond's shop.
@@ -116,11 +134,63 @@ enum PondCatalog {
         Weather("night", "weather_night", 180),
         Weather("rain", "weather_rain", 200),
         Weather("snow", "weather_snow", 220),
+        Weather("aurora", "weather_aurora", 240),
+        Weather("storm", "weather_storm", 260),
+        Weather("rainbow", "weather_rainbow", 280),
+        Weather("starry", "weather_starry", 300),
     ]
+
+    /// The surface of the water, and the bank around it.
+    ///
+    /// Both were fixed until now: the sky changed and everything under it
+    /// stayed the same pond. They are separate from the sky on purpose - a
+    /// bright noon over dark koi water is a real pond somebody would want, and
+    /// folding the two together would make it unreachable.
+    ///
+    /// The first of each is free and is what an unarranged pond looks like, so
+    /// nobody has to buy their way back to the default.
+    struct Surface: Identifiable, Hashable {
+        let id: String
+        let nameKey: String
+        let price: Int
+
+        init(_ id: String, _ nameKey: String, _ price: Int) {
+            self.id = id
+            self.nameKey = nameKey
+            self.price = price
+        }
+    }
+
+    static let waters: [Surface] = [
+        Surface("clear", "water_clear", 0),
+        Surface("reedy", "water_reedy", 120),
+        Surface("deep", "water_deep", 140),
+        Surface("sparkle", "water_sparkle", 150),
+        Surface("mirror", "water_mirror", 160),
+        Surface("emerald", "water_emerald", 170),
+    ]
+
+    static let shores: [Surface] = [
+        Surface("meadow", "shore_meadow", 0),
+        Surface("sand", "shore_sand", 120),
+        Surface("pebbles", "shore_pebbles", 140),
+        Surface("moss", "shore_moss", 150),
+        Surface("snow", "shore_snow", 170),
+        Surface("autumn", "shore_autumn", 180),
+    ]
+
+    /// Saved ponds. Three is enough for a summer pond, a winter one and one
+    /// being tinkered with, and few enough that the tab is a row of thumbnails.
+    static let layoutSlots = 3
+
+    static func waterById(_ id: String?) -> Surface { waters.first { $0.id == id } ?? waters[0] }
+    static func shoreById(_ id: String?) -> Surface { shores.first { $0.id == id } ?? shores[0] }
 
     /// Product id prefixes, so a bought decoration lands in the same owned set.
     static func decorProductId(_ id: String) -> String { "decor_\(id)" }
     static func weatherProductId(_ id: String) -> String { "weather_\(id)" }
+    static func waterProductId(_ id: String) -> String { "water_\(id)" }
+    static func shoreProductId(_ id: String) -> String { "shore_\(id)" }
 
     static func decorById(_ id: String) -> Decor? { decor.first { $0.id == id } }
 

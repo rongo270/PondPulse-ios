@@ -86,6 +86,14 @@ enum CoinBank {
     static let priceTheme = 350
     static let priceThemeRare = 550
 
+    /// The top band on each shelf: the handful of things worth saving for.
+    ///
+    /// Deliberately well clear of the band below - 650 against 400, 400 against
+    /// 220 - because a top band a fifth dearer than the one under it is not a
+    /// goal, it is a rounding error.
+    static let priceSkinLegendary = 650
+    static let pricePadLegendary = 400
+
     /// Each seat past the three the pond starts with, in order. Rising prices,
     /// so the last seat is a long-term goal rather than a rounding error.
     static let slotPrices = [120, 220, 350, 500, 700]
@@ -128,13 +136,19 @@ enum CoinBank {
         starsOf: (String) -> Int,
         dailyClears: Int,
         bestStreak: Int,
-        rushBests: some Collection<Int>
+        rushBests: some Collection<Int>,
+        /// What `Achievements` is currently worth. Passed in rather than
+        /// computed here so this file stays arithmetic over its arguments - but
+        /// it is summed *here*, because the balance rule has exactly one home
+        /// and a payout arriving by any other route is one nothing recomputes.
+        achievementCoins: Int = 0
     ) -> Int {
         campaignIds.reduce(0) { $0 + levelCoins(stars: starsOf($1)) }
             + goldenIds.reduce(0) { $0 + goldenCoins(stars: starsOf($1)) }
             + dailyCoins(clears: dailyClears)
             + streakCoins(bestStreak: bestStreak)
             + rushBests.reduce(0) { $0 + rushCoins(best: $1) }
+            + achievementCoins
     }
 
     /// What the player can spend right now.

@@ -1,0 +1,166 @@
+{
+  "identifier": "52AA67F6-C9AC-4143-8096-3C4525BEF4B9",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "1000",
+      "localizations": [
+        {
+          "description": "150 more levels, unlimited hints, and every exclusive.",
+          "displayName": "PondPulse Premium",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "premium",
+      "referenceName": "PondPulse Premium",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "1001",
+      "localizations": [
+        {
+          "description": "50 extra hints.",
+          "displayName": "Hint Pack",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "hints_50",
+      "referenceName": "Hint Pack",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "1002",
+      "localizations": [
+        {
+          "description": "100 pond coins.",
+          "displayName": "100 Coins",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "coins_100",
+      "referenceName": "100 Coins",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "1.99",
+      "familyShareable": false,
+      "internalID": "1003",
+      "localizations": [
+        {
+          "description": "250 pond coins.",
+          "displayName": "250 Coins",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "coins_250",
+      "referenceName": "250 Coins",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "3.99",
+      "familyShareable": false,
+      "internalID": "1004",
+      "localizations": [
+        {
+          "description": "500 pond coins.",
+          "displayName": "500 Coins",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "coins_500",
+      "referenceName": "500 Coins",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "2000",
+      "localizations": [
+        {
+          "description": "A special pond friend you will not find anywhere else.",
+          "displayName": "Star Whale",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "skin_starwhale",
+      "referenceName": "Star Whale",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "2001",
+      "localizations": [
+        {
+          "description": "A special pond friend you will not find anywhere else.",
+          "displayName": "Kitsune",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "skin_kitsune",
+      "referenceName": "Kitsune",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "2002",
+      "localizations": [
+        {
+          "description": "A special pond friend you will not find anywhere else.",
+          "displayName": "Griffin",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "skin_griffin",
+      "referenceName": "Griffin",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "2003",
+      "localizations": [
+        {
+          "description": "A special pond friend you will not find anywhere else.",
+          "displayName": "Sea Dragon",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "skin_seadragon",
+      "referenceName": "Sea Dragon",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "0.99",
+      "familyShareable": false,
+      "internalID": "2004",
+      "localizations": [
+        {
+          "description": "A special pond friend you will not find anywhere else.",
+          "displayName": "Moon Rabbit",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "skin_moonrabbit",
+      "referenceName": "Moon Rabbit",
+      "type": "NonConsumable"
+    }
+  ],
+  "settings": {
+    "_applicationInternalID": "PondPulse",
+    "_developerTeamID": "",
+    "_lastSynchronizedDate": 0
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

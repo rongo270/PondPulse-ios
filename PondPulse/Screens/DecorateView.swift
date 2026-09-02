@@ -30,7 +30,41 @@
 
 import SwiftUI
 
-private enum DecorTab: Hashable {
+/// The six things the tray can be showing.
+///
+/// It was one row of decorations and a Sky tab, which was fine for sixteen
+/// things and is not fine for thirty plus twelve surfaces - a single scrolling
+/// strip of forty-two chips is a strip nobody reaches the end of. The pond is
+/// six separate decisions, so it is six tabs, each with an SF Symbol.
+private enum DecorTab: String, Hashable, CaseIterable, Identifiable {
+    case decor, water, shore, sky, friends, layouts
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .decor: return "pond_section_decor"
+        case .water: return "pond_section_water"
+        case .shore: return "pond_section_shore"
+        case .sky: return "pond_section_sky"
+        case .friends: return "pond_section_friends"
+        case .layouts: return "pond_section_layouts"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .decor: return "leaf.fill"
+        case .water: return "water.waves"
+        case .shore: return "mountain.2.fill"
+        case .sky: return "cloud.sun.fill"
+        case .friends: return "pawprint.fill"
+        case .layouts: return "square.grid.2x2.fill"
+        }
+    }
+}
+
+private enum LegacyDecorTab: Hashable {
     case decor, sky
 }
 
@@ -98,6 +132,13 @@ struct DecorateView: View {
     @Environment(\.strings) private var strings
 
     @State private var tab: DecorTab = .decor
+
+    /// The undo stack. Session-only and deliberately so: it is a safety net for
+    /// the arrangement being made right now, not a version history.
+    ///
+    /// Buying is not on it: coins have changed hands, and an undo that quietly
+    /// refunded a purchase would be a second, silent economy.
+    @State private var undo: [UndoStep] = []
     @State private var selected: String?
     /// The string key of whatever the tray is currently saying, if anything.
     @State private var notice: String?
@@ -188,7 +229,8 @@ struct DecorateView: View {
                 let w = size.width
                 let h = size.height
 
-                drawPondBasin(&ctx, weatherId: vm.pondWeather, size: size, palette: palette, time: time)
+                drawPondBasin(&ctx, weatherId: vm.pondWeather, size: size, palette: palette, time: time,
+                              waterId: vm.pondWater, shoreId: vm.pondShore)
 
                 for item in onPond {
                     let at = spotOf(item)
@@ -292,22 +334,221 @@ struct DecorateView: View {
         return CGPoint(x: point.x / size.width, y: point.y / size.height)
     }
 
+    // MARK: Water, shore and sky
+
+    /// One strip of buyable surfaces - the water or the bank.
+    ///
+    /// Both are the same shape of decision (pick one of six, some of them
+    /// bought) so they are one component, and each passes its own swatch.
+    @ViewBuilder
+    private func surfaceStrip<Swatch: View>(
+        _ items: [PondCatalog.Surface],
+        current: String,
+        productId: @escaping (String) -> String,
+        @ViewBuilder swatch: @escaping (String) -> Swatch,
+        onPick: @escaping (String) -> Void
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items) { surface in
+                    let pid = productId(surface.id)
+                    let owned = surface.price == 0 || vm.owned.contains(pid)
+                    SurfaceChip(
+                        nameKey: surface.nameKey,
+                        price: surface.price,
+                        owned: owned,
+                        selected: owned && surface.id == current,
+                        affordable: vm.canAfford(surface.price),
+                        swatch: { swatch(surface.id) }
+                    ) {
+                        if owned {
+                            onPick(surface.id)
+                        } else if vm.canAfford(surface.price) {
+                            if vm.buyWithCoins(price: surface.price, productId: pid) {
+                                onPick(surface.id)
+                            }
+                        } else {
+                            notice = "decorate_short"
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+        }
+    }
+
+    // MARK: Who is swimming
+
+    /// The cast, inside Decorate.
+    ///
+    /// The same rule My Pond's friends panel follows: a full pond refuses
+    /// rather than swapping, because a tap that evicts somebody unnamed is the
+    /// one thing a screen about arranging things must never do.
+    private var castStrip: some View {
+        let roster = vm.ownedSkinIds()
+        let cast = vm.pondCast()
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                Text(strings["decorate_friends_hint"])
+                    .font(.game(12))
+                    .foregroundStyle(palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Text(strings["pond_seats", cast.count, vm.pondSlots])
+                    .font(.game(12, .bold))
+                    .foregroundStyle(palette.accent)
+                    .fixedSize()
+            }
+            .padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(roster, id: \.self) { id in
+                        let inPond = cast.contains(id)
+                        Button {
+                            if inPond, cast.count > 1 {
+                                vm.setPondFriends(cast.filter { $0 != id })
+                            } else if inPond {
+                                notice = "pond_last_friend"
+                            } else if cast.count < vm.pondSlots {
+                                vm.setPondFriends(cast + [id])
+                            } else {
+                                notice = "pond_seats_taken"
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                SkinPreview(skinId: id).aspectRatio(1, contentMode: .fit)
+                                Text(strings[Catalog.skins.first { $0.id == id }?.nameKey ?? ""])
+                                    .font(.game(11))
+                                    .foregroundStyle(palette.textPrimary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
+                            .padding(6)
+                            .frame(width: 84)
+                            .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(inPond ? palette.accent : .clear, lineWidth: 2)
+                            )
+                        }
+                        .buttonStyle(SquishyButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 14)
+            }
+        }
+    }
+
+    // MARK: Saved ponds
+
+    /// The three saved ponds.
+    ///
+    /// Each thumbnail is the whole pond it holds - its own water, bank, sky and
+    /// every decoration where it was left - rather than a slot number, because
+    /// three numbered boxes tell you nothing about which one is the winter pond.
+    private var layoutStrip: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(strings["layout_hint"])
+                .font(.game(12))
+                .foregroundStyle(palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(Array(vm.pondLayouts.enumerated()), id: \.offset) { slot, layout in
+                        VStack(spacing: 4) {
+                            ZStack {
+                                if layout.isEmpty {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(palette.background)
+                                    Text(strings["layout_empty"])
+                                        .font(.game(11))
+                                        .foregroundStyle(palette.textSecondary)
+                                } else {
+                                    LayoutThumb(layout: layout)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                            }
+                            .frame(height: 66)
+                            Text(strings["layout_slot", slot + 1])
+                                .font(.game(11, .bold))
+                                .foregroundStyle(palette.textPrimary)
+                            HStack(spacing: 4) {
+                                LayoutAction(text: strings["layout_save"], primary: true) {
+                                    vm.savePondLayout(slot, onPond: placedDecor())
+                                    notice = "decorate_placed"
+                                }
+                                if !layout.isEmpty {
+                                    LayoutAction(text: strings["layout_load"], primary: false) {
+                                        // Snapshot first: switching replaces the
+                                        // whole pond, and it is the only tap here
+                                        // that could lose an afternoon's work.
+                                        undo.append(.whole(currentPond()))
+                                        vm.applyPondLayout(slot)
+                                    }
+                                }
+                            }
+                            if !layout.isEmpty {
+                                Button(strings["layout_clear"]) { vm.clearPondLayout(slot) }
+                                    .font(.game(11))
+                                    .foregroundStyle(palette.textSecondary)
+                            }
+                        }
+                        .frame(width: 132)
+                        .padding(8)
+                        .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                }
+                .padding(.horizontal, 14)
+            }
+        }
+    }
+
+    /// Where everything currently on the pond is standing.
+    private func placedDecor() -> [String: CGPoint] {
+        var out: [String: CGPoint] = [:]
+        for item in PondCatalog.decor where vm.isDecorOwned(item) && !vm.decorStored.contains(item.id) {
+            out[item.id] = vm.decorSpots[item.id] ?? item.at
+        }
+        return out
+    }
+
+    /// The pond exactly as it stands, for the undo snapshot before a switch.
+    private func currentPond() -> PondLayout {
+        PondLayout(
+            weather: vm.pondWeather,
+            water: vm.pondWater,
+            shore: vm.pondShore,
+            friends: vm.pondFriends,
+            stored: vm.decorStored,
+            spots: Dictionary(uniqueKeysWithValues: PondCatalog.decor.map {
+                ($0.id, vm.decorSpots[$0.id] ?? $0.at)
+            }),
+            inPond: Set(placedDecor().keys)
+        )
+    }
+
     // MARK: The tray
 
     private var tray: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                TrayTab(text: strings["pond_section_decor"], selected: tab == .decor) {
-                    tab = .decor
-                    selected = nil
+            // Six tabs do not fit across a small phone, so the row scrolls
+            // rather than shrinking the labels to nothing.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(DecorTab.allCases) { entry in
+                        TrayTab(
+                            text: strings[entry.titleKey],
+                            symbol: entry.symbol,
+                            selected: tab == entry
+                        ) {
+                            tab = entry
+                            selected = nil
+                        }
+                    }
                 }
-                TrayTab(text: strings["pond_section_sky"], selected: tab == .sky) {
-                    tab = .sky
-                    selected = nil
-                }
-                Spacer(minLength: 0)
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 8)
 
@@ -357,6 +598,24 @@ struct DecorateView: View {
                     }
                     .padding(.horizontal, 14)
                 }
+
+            case .water:
+                surfaceStrip(PondCatalog.waters, current: vm.pondWater,
+                             productId: PondCatalog.waterProductId) { id in
+                    WaterSwatch(waterId: id, weatherId: vm.pondWeather)
+                } onPick: { vm.setPondWater($0) }
+
+            case .shore:
+                surfaceStrip(PondCatalog.shores, current: vm.pondShore,
+                             productId: PondCatalog.shoreProductId) { id in
+                    ShoreSwatch(shoreId: id, waterId: vm.pondWater, weatherId: vm.pondWeather)
+                } onPick: { vm.setPondShore($0) }
+
+            case .friends:
+                castStrip
+
+            case .layouts:
+                layoutStrip
             }
         }
         .padding(.bottom, 12)
@@ -466,19 +725,58 @@ struct DecorateView: View {
 private struct TrayTab: View {
     @Environment(\.palette) private var palette
     let text: String
+    var symbol: String?
     let selected: Bool
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            Text(text)
-                .font(.game(14, .bold))
-                .foregroundStyle(selected ? PondPalette.onAccent : palette.textSecondary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
-                .background(selected ? palette.accent : palette.surface, in: Capsule())
+            HStack(spacing: 6) {
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 12, weight: .semibold))
+                }
+                Text(text).font(.game(14, .bold))
+            }
+            .foregroundStyle(selected ? PondPalette.onAccent : palette.textSecondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(selected ? palette.accent : palette.surface, in: Capsule())
         }
         .buttonStyle(SquishyButtonStyle())
+    }
+}
+
+/// Open water in the candidate surface, in the light this pond is in.
+///
+/// It draws the water but **not** the sky's overlay. First cut drew both, on
+/// the reasonable-sounding argument that a chip should show your own pond;
+/// under a sunset that made all six waters the same murky violet, because the
+/// overlay is opaque enough to *be* the picture. Only the sky chips draw it.
+private struct WaterSwatch: View {
+    let waterId: String
+    let weatherId: String
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        Canvas { ctx, size in
+            drawPondWater(&ctx, weatherId: weatherId, size: size, palette: palette,
+                          time: 0.5, waterId: waterId)
+        }
+    }
+}
+
+/// A slice of bank and water, so a shore is judged against its own shoreline.
+private struct ShoreSwatch: View {
+    let shoreId: String
+    let waterId: String
+    let weatherId: String
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        Canvas { ctx, size in
+            drawPondBasin(&ctx, weatherId: weatherId, size: size, palette: palette,
+                          time: 0.5, waterId: waterId, shoreId: shoreId)
+        }
     }
 }
 
@@ -604,6 +902,115 @@ private struct SkyChip: View {
             .frame(width: 104)
             .background(palette.surface, in: shape)
             .overlay(shape.strokeBorder(selected ? palette.accent : .clear, lineWidth: 2))
+        }
+        .buttonStyle(SquishyButtonStyle())
+    }
+}
+
+
+/// One reversible thing the player did.
+enum UndoStep {
+    case move(String, CGPoint)
+    case stored(String, Bool)
+    case sky(String)
+    case water(String)
+    case shore(String)
+    case cast([String])
+    /// The whole pond, snapshotted before a layout switch replaced it.
+    case whole(PondLayout)
+}
+
+/// A surface chip: a live slice of the pond, its name, and its price.
+private struct SurfaceChip<Swatch: View>: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    let nameKey: String
+    let price: Int
+    let owned: Bool
+    let selected: Bool
+    let affordable: Bool
+    @ViewBuilder let swatch: Swatch
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 3) {
+                swatch
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text(strings[nameKey])
+                    .font(.game(11))
+                    .foregroundStyle(palette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if selected {
+                    Text(strings["shop_selected"]).font(.game(11, .bold)).foregroundStyle(palette.accent)
+                } else if owned {
+                    Text(strings["shop_select"]).font(.game(11)).foregroundStyle(palette.textSecondary)
+                } else {
+                    CoinPrice(price: price, affordable: affordable)
+                }
+            }
+            .padding(6)
+            .frame(width: 104)
+            .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(selected ? palette.accent : .clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(SquishyButtonStyle())
+    }
+}
+
+/// A saved pond, small.
+///
+/// Drawn from the layout rather than from what is on screen, and it draws every
+/// decoration the layout placed - including any the player has since sold off.
+/// The thumbnail's job is to say which pond this slot holds, and quietly
+/// dropping half its furniture would make two saved ponds look identical.
+private struct LayoutThumb: View {
+    let layout: PondLayout
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        Canvas { ctx, size in
+            drawPondBasin(&ctx, weatherId: layout.weather, size: size, palette: palette,
+                          time: 0.4, waterId: layout.water, shoreId: layout.shore)
+            let shown = PondCatalog.decor
+                .filter { layout.drawable.contains($0.id) && !layout.stored.contains($0.id) }
+                .sorted { (layout.spots[$0.id] ?? $0.at).y < (layout.spots[$1.id] ?? $1.at).y }
+            for item in shown {
+                let at = layout.spots[item.id] ?? item.at
+                let side = size.width * item.scale
+                drawDecor(
+                    &ctx, id: item.id,
+                    rect: CGRect(x: size.width * at.x - side / 2, y: size.height * at.y - side / 2,
+                                 width: side, height: side),
+                    palette: palette, phase: 0.4
+                )
+            }
+            drawWeather(&ctx, id: layout.weather, size: size, palette: palette, time: 0.4)
+        }
+    }
+}
+
+private struct LayoutAction: View {
+    @Environment(\.palette) private var palette
+    let text: String
+    let primary: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(text)
+                .font(.game(11, .bold))
+                .foregroundStyle(primary ? PondPalette.onAccent : palette.textSecondary)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(primary ? palette.accent : palette.background,
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(SquishyButtonStyle())
     }

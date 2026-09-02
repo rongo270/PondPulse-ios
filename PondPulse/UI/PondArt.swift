@@ -37,7 +37,8 @@ nonisolated func drawDecor(_ ctx: inout GraphicsContext, id: String, rect: CGRec
     case "birdhouse": drawBirdhouse(&ctx, rect, palette)
     case "toadstools": drawToadstools(&ctx, rect, palette)
     case "fence": drawFence(&ctx, rect, palette)
-    default: break
+    // The second shelf lives in PondArtMore.swift.
+    default: drawDecorMore(&ctx, id, rect, palette, phase)
     }
 }
 
@@ -548,7 +549,7 @@ nonisolated func drawWeather(_ ctx: inout GraphicsContext, id: String, size: CGS
         }
 
     default:
-        break
+        drawWeatherMore(&ctx, id, size, palette, time)
     }
 }
 
@@ -557,7 +558,17 @@ nonisolated func drawWeather(_ ctx: inout GraphicsContext, id: String, size: CGS
 /// Night and sunset change what colour water *is*, not just what is drawn on
 /// top of it: a bright noon pond under a night overlay looks like a photo with
 /// a filter, which is exactly what it would be.
-nonisolated func drawPondWater(_ ctx: inout GraphicsContext, weatherId: String, size: CGSize, palette: PondPalette, time: CGFloat) {
+nonisolated func drawPondWater(
+    _ ctx: inout GraphicsContext,
+    weatherId: String,
+    size: CGSize,
+    palette: PondPalette,
+    time: CGFloat,
+    /// The water the player bought, which is a different question from the sky.
+    /// Defaults to the plain surface so the four mini games - which draw water
+    /// with no pond around it - go on looking exactly as they did.
+    waterId: String = "clear"
+) {
     let tint: (Color, CGFloat)
     switch weatherId {
     case "night": tint = (Color(hex: 0x0A1B33), 0.45)
@@ -565,10 +576,17 @@ nonisolated func drawPondWater(_ ctx: inout GraphicsContext, weatherId: String, 
     case "fog": tint = (Color(hex: 0xB8D3DC), 0.20)
     case "rain": tint = (Color(hex: 0x1E3C4C), 0.25)
     case "snow": tint = (Color(hex: 0xD7EEF8), 0.16)
+    case "storm": tint = (Color(hex: 0x16283A), 0.34)
+    case "aurora": tint = (Color(hex: 0x123A46), 0.26)
+    case "starry": tint = (Color(hex: 0x0B1430), 0.42)
     default: tint = (.clear, 0)
     }
-    let top = palette.water.blended(tint.0, tint.1)
-    let deep = palette.waterDeep.blended(tint.0, tint.1)
+    // The bought surface first, the sky's tint on top of it: the sky is the
+    // light falling on the water, so it has to be the thing that colours it
+    // last, or a night pond over emerald water reads as green daylight.
+    let base = waterColours(waterId, palette)
+    let top = base.0.blended(tint.0, tint.1)
+    let deep = base.1.blended(tint.0, tint.1)
     let w = size.width
     let h = size.height
     ctx.fill(
@@ -585,6 +603,8 @@ nonisolated func drawPondWater(_ ctx: inout GraphicsContext, weatherId: String, 
             style: stroke(h * 0.004)
         )
     }
+
+    drawWaterDetail(&ctx, waterId, size, palette, time)
 }
 
 // MARK: - The banks
@@ -639,7 +659,29 @@ nonisolated private func waterPath(_ w: CGFloat, _ h: CGFloat) -> Path {
 /// Used by My Pond and by the Decorate screen; the games draw `drawPondWater`
 /// on its own, because a bank is scenery for a place you live in and clutter in
 /// a place you are trying to read.
-nonisolated func drawPondBasin(_ ctx: inout GraphicsContext, weatherId: String, size: CGSize, palette: PondPalette, time: CGFloat) {
+nonisolated func drawPondBasin(
+    _ ctx: inout GraphicsContext,
+    weatherId: String,
+    size: CGSize,
+    palette: PondPalette,
+    time: CGFloat,
+    waterId: String = "clear",
+    shoreId: String = "meadow"
+) {
+    let w = size.width
+    let h = size.height
+    drawShore(&ctx, shoreId, size, palette, time)
+
+    let path = waterPath(w, h)
+    var clipped = ctx
+    clipped.clip(to: path)
+    drawPondWater(&clipped, weatherId: weatherId, size: size, palette: palette, time: time, waterId: waterId)
+    // A wet rim where the water meets the grass.
+    ctx.stroke(path, with: .color(palette.waterRim.opacity(0.45)), style: stroke(w * 0.012))
+}
+
+/// The default bank: meadow grass, tufted thickest at the water's edge.
+nonisolated func drawMeadowShore(_ ctx: inout GraphicsContext, _ size: CGSize, _ palette: PondPalette, _ time: CGFloat) {
     let w = size.width
     let h = size.height
     let grass = palette.padDark.blended(Color(hex: 0x2E4A22), 0.35)
@@ -674,13 +716,6 @@ nonisolated func drawPondBasin(_ ctx: inout GraphicsContext, weatherId: String, 
             style: stroke(w * 0.006)
         )
     }
-
-    let path = waterPath(w, h)
-    var clipped = ctx
-    clipped.clip(to: path)
-    drawPondWater(&clipped, weatherId: weatherId, size: size, palette: palette, time: time)
-    // A wet rim where the water meets the grass.
-    ctx.stroke(path, with: .color(palette.waterRim.opacity(0.45)), style: stroke(w * 0.012))
 }
 
 /// A tile of plain pond, for drawing one decoration against in a picker.

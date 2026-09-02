@@ -51,6 +51,14 @@ enum Screen: Equatable {
     /// onto. Its own screen rather than a panel over My Pond, because a panel
     /// covers the half of the pond you are trying to place something on.
     case decorate
+
+    /// The badge shelf: twenty-four milestones, and what each one pays.
+    ///
+    /// Its own screen rather than a panel in My Pond because six of its rows
+    /// are about the campaign, the daily and Splash Rush - none of which happen
+    /// in the pond - and because a shelf you can only reach through a pond you
+    /// have not opened yet is a shelf a new player never sees.
+    case achievements
 }
 
 @MainActor
@@ -85,6 +93,9 @@ final class AppViewModel: ObservableObject {
 
     // The pond ---------------------------------------------------------------
     @Published private(set) var pondWeather: String
+    @Published private(set) var pondWater: String
+    @Published private(set) var pondShore: String
+    @Published private(set) var pondLayouts: [PondLayout]
     @Published private(set) var pondSlots: Int
     @Published private(set) var pondFriends: [String]
     @Published private(set) var decorSpots: [String: CGPoint]
@@ -123,6 +134,9 @@ final class AppViewModel: ObservableObject {
         coinsGranted = store.coinsGranted
         coinsSpent = store.coinsSpent
         pondWeather = store.pondWeather
+        pondWater = store.pondWater
+        pondShore = store.pondShore
+        pondLayouts = store.pondLayouts
         pondSlots = store.pondSlots
         pondFriends = store.pondFriends
         decorSpots = store.decorSpots
@@ -185,6 +199,7 @@ final class AppViewModel: ObservableObject {
             case "pond", "collection": backStack = [.home, .pond]
             case "decorate": backStack = [.home, .pond, .decorate]
             case "settings": backStack = [.home, .settings]
+            case "achievements": backStack = [.home, .achievements]
             default: break
             }
         }
@@ -369,6 +384,14 @@ final class AppViewModel: ObservableObject {
         case .bonusReward(let count): return bonusPondsCleared() >= count
         case .streakReward(let days): return dailyBestStreak >= days
         case .premium: return ownedIds.contains(Catalog.premiumId)
+        // A theme friend is owned exactly when its theme is, whatever the theme
+        // cost. Resolved one level deep and no further: no theme is itself
+        // unlocked by a theme, so this cannot recurse.
+        case .themeFriend(let themeId):
+            guard let theme = Catalog.themes.first(where: { $0.id == themeId }) else { return false }
+            return isOwned(theme.unlock, productId: Catalog.themeProductId(theme.id))
+        // The five special friends: bought outright, restored by StoreKit.
+        case .money: return ownedIds.contains(productId)
         // Bought, or won from the golden pond that also hands it out. Two doors
         // to the same item: the coin price is what it costs someone who does not
         // play the golden ponds, and clearing them is what it costs someone who
@@ -417,7 +440,26 @@ final class AppViewModel: ObservableObject {
             starsOf: { stars[$0] ?? 0 },
             dailyClears: dailyTotal,
             bestStreak: dailyBestStreak,
-            rushBests: rushBests.values
+            rushBests: rushBests.values,
+            achievementCoins: Achievements.coins(achievements)
+        )
+    }
+
+    /// Everything the badge shelf is allowed to look at, gathered in one place.
+    ///
+    /// Recomputed from progress like everything else, which is what lets the
+    /// badges pay coins without a claimed set or a second ledger - see
+    /// `Achievements`.
+    var achievements: Achievements.Snapshot {
+        Achievements.Snapshot(
+            pondsCleared: solvedLevels(),
+            stars: Levels.all.reduce(0) { $0 + (stars[$1.id] ?? 0) },
+            goldenCleared: bonusPondsCleared(),
+            dailyClears: dailyTotal,
+            bestStreak: dailyBestStreak,
+            bestRush: rushBests.values.max() ?? 0,
+            friendsOwned: ownedSkinIds().count,
+            decorOwned: PondCatalog.decor.count { isDecorOwned($0) }
         )
     }
 
@@ -513,6 +555,48 @@ final class AppViewModel: ObservableObject {
     func setPondWeather(_ id: String) {
         store.setPondWeather(id)
         pondWeather = id
+    }
+
+    func setPondWater(_ id: String) {
+        store.setPondWater(id)
+        pondWater = id
+    }
+
+    func setPondShore(_ id: String) {
+        store.setPondShore(id)
+        pondShore = id
+    }
+
+    func savePondLayout(_ slot: Int, onPond: [String: CGPoint]) {
+        store.savePondLayout(slot, onPond: onPond)
+        pondLayouts = store.pondLayouts
+    }
+
+    func applyPondLayout(_ slot: Int) {
+        guard store.applyPondLayout(slot) else { return }
+        reloadPondState()
+    }
+
+    /// Puts a pond back that was never in a slot - how Undo reverses a switch.
+    func restorePond(_ layout: PondLayout) {
+        store.restorePondLayout(layout)
+        reloadPondState()
+    }
+
+    func clearPondLayout(_ slot: Int) {
+        store.clearPondLayout(slot)
+        pondLayouts = store.pondLayouts
+    }
+
+    /// Re-reads everything a saved pond can change, in one go.
+    private func reloadPondState() {
+        pondWeather = store.pondWeather
+        pondWater = store.pondWater
+        pondShore = store.pondShore
+        pondFriends = store.pondFriends
+        decorSpots = store.decorSpots
+        decorStored = store.decorStored
+        pondLayouts = store.pondLayouts
     }
 
     /// Banks a mini game run: the best score, and whatever the week's ceiling
@@ -689,6 +773,16 @@ final class AppViewModel: ObservableObject {
         prices[productId] ?? fallback
     }
 
+    /// StoreKit's own formatted price, or nil when the store has not quoted one.
+    ///
+    /// Nil is the signal that a product must not be offered: either the store is
+    /// unreachable or the product is not configured in App Store Connect, and
+    /// both mean the same thing to a player. It is the only thing standing
+    /// between an unreachable store and giving a paid friend away.
+    func price(_ productId: String, fallback: String?) -> String? {
+        prices[productId] ?? fallback
+    }
+
     /// Runs the App Store payment sheet and returns true once the verified
     /// purchase has been granted, so the caller can equip the item. The hint
     /// pack and the coin packs are consumables: they credit hints or coins
@@ -749,6 +843,9 @@ final class AppViewModel: ObservableObject {
         coinsGranted = store.coinsGranted
         miniBests = store.miniBests
         pondWeather = store.pondWeather
+        pondWater = store.pondWater
+        pondShore = store.pondShore
+        pondLayouts = store.pondLayouts
         pondSlots = store.pondSlots
         pondFriends = store.pondFriends
         decorSpots = store.decorSpots

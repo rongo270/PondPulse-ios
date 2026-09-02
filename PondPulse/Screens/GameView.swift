@@ -250,8 +250,10 @@ struct GameView: View {
             // price is one door to it and the golden pond is the other.
             case .coins(_, let bonusCount):
                 return spec.isBonus && bonusFirstClear && bonusCount == bonusCleared
-            // Streak prizes are celebrated on the Daily Pond's own win card.
-            case .streakReward, .free, .premium:
+            // Streak prizes are celebrated on the Daily Pond's own win card;
+            // a theme friend arrives with its theme and a special friend with
+            // its purchase, so neither is ever earned by finishing a pond.
+            case .streakReward, .free, .premium, .themeFriend, .money:
                 return false
             }
         }

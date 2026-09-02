@@ -257,6 +257,19 @@ struct HomeView: View {
                         subLabel: pondOpen ? nil : strings["home_pond_locked", pondMinFriends],
                         locked: !pondOpen
                     ) { vm.navigate(pondOpen ? .pond : .shop) }
+                    // The badge shelf. It carries how many are earned rather
+                    // than sitting there unlabelled: a tile that says 14/24 is
+                    // a reason to open it, and one that says only "Badges" is
+                    // furniture.
+                    MenuTile(
+                        systemName: "trophy.fill",
+                        label: strings["home_achievements"],
+                        subLabel: strings[
+                            "home_stars_short",
+                            Achievements.earnedCount(vm.achievements),
+                            Achievements.all.count
+                        ]
+                    ) { vm.navigate(.achievements) }
                     MenuTile(systemName: "bag.fill", label: strings["home_shop"]) { vm.navigate(.shop) }
                 }
                 .fixedSize(horizontal: false, vertical: true)

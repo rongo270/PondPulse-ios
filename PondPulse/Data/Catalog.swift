@@ -27,6 +27,30 @@ enum Unlock {
     /// Included with the premium upgrade; hidden from the shop until owned.
     case premium
 
+    /// Comes free with a theme: owning that theme owns this too.
+    ///
+    /// Every theme but the two free ones has a pair of friends who belong to it
+    /// - the toucan lives in the jungle, the comet duck in the galaxy - and the
+    /// theme is the only door to them. It is not a second price tag: whatever
+    /// the theme cost, in coins, in levels, in golden ponds or in the premium
+    /// upgrade, is what these cost, and a theme already owned hands its pair
+    /// over the moment the app opens.
+    ///
+    /// The two free themes have no pair, deliberately. A friend that arrives
+    /// before the player has done anything is not a friend they got.
+    case themeFriend(String)
+
+    /// Bought with money rather than with coins or with play.
+    ///
+    /// The five special friends, and nothing else. Everything on the ordinary
+    /// shelves is reachable by playing; these are the one place that is not
+    /// true, which is why they are a small, closed set at the end of the shelf
+    /// rather than a band the catalogue can grow into.
+    ///
+    /// The price shown must come from StoreKit, never from this number - a
+    /// hard-coded "$0.99" is wrong in every country that does not use dollars.
+    case money(cents: Int)
+
     /// Bought from the shop with coins, at one of the bands in `CoinBank`.
     ///
     /// Coins, not money. Only three things in PondPulse ever charge real money -
@@ -72,6 +96,17 @@ enum Unlock {
         return false
     }
 
+    /// The theme that hands this item over, if a theme is how you get it.
+    var themeFriendOf: String? {
+        if case .themeFriend(let id) = self { return id }
+        return nil
+    }
+
+    var isMoney: Bool {
+        if case .money = self { return true }
+        return false
+    }
+
     /// Where an item sits on the ladder of *how you get it*, so every shelf reads
     /// the same way: free, then earned by playing the campaign, then earned in a
     /// golden pond, then earned on a daily streak, then bought, then premium.
@@ -85,8 +120,10 @@ enum Unlock {
         case .levelReward: return 1
         case .bonusReward: return 2
         case .streakReward: return 3
-        case .coins: return 4
-        case .premium: return 5
+        case .themeFriend: return 4
+        case .coins: return 5
+        case .premium: return 6
+        case .money: return 7
         }
     }
 
@@ -97,6 +134,11 @@ enum Unlock {
         case .bonusReward(let count): return count
         case .streakReward(let days): return days
         case .coins(let price, _): return price
+        case .money(let cents): return cents
+        // A theme friend has no step of its own: the sort is stable, so the
+        // twenty of them keep the order they are authored in, which is theme by
+        // theme in pairs. Ordering them by their theme's own price instead
+        // would split every pair across the shelf.
         default: return 0
         }
     }
@@ -170,6 +212,14 @@ enum Catalog {
     static let hintsPrice = "$0.99"
     static let hintsPerPack = 50
 
+    /// What one special friend costs, in US cents - $0.99 each.
+    ///
+    /// The five are priced identically on purpose. A shelf of five mythical
+    /// friends at five different prices asks the player to rank them, and the
+    /// answer would only ever be "the cheapest"; at one price the question is
+    /// which one they like. The *displayed* price comes from StoreKit.
+    static let specialCents = 99
+
     /// The coin packs, in catalog order - the one place money buys coins rather
     /// than the other way round. Product ids match `CoinBank.coinPacks` one for
     /// one, so a pack can never grant an amount the economy has not been priced
@@ -239,6 +289,51 @@ enum Catalog {
         SkinItem(id: "pixel", nameKey: "skin_pixel", unlock: .coins(price: CoinBank.priceSkinUncommon)),
         SkinItem(id: "phoenix", nameKey: "skin_phoenix", unlock: .premium),
         SkinItem(id: "unicorn", nameKey: "skin_unicorn", unlock: .premium),
+
+        // The theme pairs. Authored theme by theme, in the order the themes
+        // themselves are authored, because the sort keeps a rank's authoring
+        // order and these must never be split up: the pair *is* the theme.
+        SkinItem(id: "toucan", nameKey: "skin_toucan", unlock: .themeFriend("jungle")),
+        SkinItem(id: "treefrog", nameKey: "skin_treefrog", unlock: .themeFriend("jungle")),
+        SkinItem(id: "mandarin", nameKey: "skin_mandarin", unlock: .themeFriend("goldenpond")),
+        SkinItem(id: "goldfish", nameKey: "skin_goldfish", unlock: .themeFriend("goldenpond")),
+        SkinItem(id: "swallow", nameKey: "skin_swallow", unlock: .themeFriend("sakura")),
+        SkinItem(id: "blossomkoi", nameKey: "skin_blossomkoi", unlock: .themeFriend("sakura")),
+        SkinItem(id: "neontetra", nameKey: "skin_neontetra", unlock: .themeFriend("neon")),
+        SkinItem(id: "glowjelly", nameKey: "skin_glowjelly", unlock: .themeFriend("neon")),
+        SkinItem(id: "wooduck", nameKey: "skin_wooduck", unlock: .themeFriend("autumn")),
+        SkinItem(id: "squirrel", nameKey: "skin_squirrel", unlock: .themeFriend("autumn")),
+        SkinItem(id: "snowgoose", nameKey: "skin_snowgoose", unlock: .themeFriend("frozen")),
+        SkinItem(id: "icefish", nameKey: "skin_icefish", unlock: .themeFriend("frozen")),
+        SkinItem(id: "clownfish", nameKey: "skin_clownfish", unlock: .themeFriend("coral")),
+        SkinItem(id: "starfish", nameKey: "skin_starfish", unlock: .themeFriend("coral")),
+        SkinItem(id: "cometduck", nameKey: "skin_cometduck", unlock: .themeFriend("galaxy")),
+        SkinItem(id: "moonjelly", nameKey: "skin_moonjelly", unlock: .themeFriend("galaxy")),
+        SkinItem(id: "gummyduck", nameKey: "skin_gummyduck", unlock: .themeFriend("candy")),
+        SkinItem(id: "bubblegum", nameKey: "skin_bubblegum", unlock: .themeFriend("candy")),
+        SkinItem(id: "royalswan", nameKey: "skin_royalswan", unlock: .themeFriend("royal")),
+        SkinItem(id: "peacock", nameKey: "skin_peacock", unlock: .themeFriend("royal")),
+
+        // The five special friends: the only things in PondPulse that cost
+        // money on their own. A closed set, at the end of the shelf, so the
+        // shelf above it stays a shelf you can play your way onto.
+        SkinItem(id: "starwhale", nameKey: "skin_starwhale", unlock: .money(cents: specialCents)),
+        SkinItem(id: "kitsune", nameKey: "skin_kitsune", unlock: .money(cents: specialCents)),
+        SkinItem(id: "griffin", nameKey: "skin_griffin", unlock: .money(cents: specialCents)),
+        SkinItem(id: "seadragon", nameKey: "skin_seadragon", unlock: .money(cents: specialCents)),
+        SkinItem(id: "moonrabbit", nameKey: "skin_moonrabbit", unlock: .money(cents: specialCents)),
+
+        // The far end of every route: the friend for finishing all thirty
+        // golden ponds, two more rungs on the daily streak, and a top coin band
+        // worth most of a pack. Each is the last thing on its own ladder.
+        SkinItem(id: "goldenturtle", nameKey: "skin_goldenturtle", unlock: .bonusReward(30)),
+        SkinItem(id: "firefly", nameKey: "skin_firefly", unlock: .streakReward(50)),
+        SkinItem(id: "owl", nameKey: "skin_owl", unlock: .streakReward(75)),
+        SkinItem(id: "kraken", nameKey: "skin_kraken", unlock: .coins(price: CoinBank.priceSkinLegendary)),
+        SkinItem(id: "anglerfish", nameKey: "skin_anglerfish", unlock: .coins(price: CoinBank.priceSkinLegendary)),
+        SkinItem(id: "manta", nameKey: "skin_manta", unlock: .coins(price: CoinBank.priceSkinLegendary)),
+        SkinItem(id: "raven", nameKey: "skin_raven", unlock: .coins(price: CoinBank.priceSkinLegendary)),
+        SkinItem(id: "lionfish", nameKey: "skin_lionfish", unlock: .coins(price: CoinBank.priceSkinLegendary)),
     ]
 
     private static let authoredPads: [PadItem] = [
@@ -264,6 +359,19 @@ enum Catalog {
         PadItem(id: "coralring", nameKey: "pad_coralring", unlock: .coins(price: CoinBank.pricePadRare)),
         PadItem(id: "bubble", nameKey: "pad_bubble", unlock: .coins(price: CoinBank.pricePad, bonusCount: 18)),
         PadItem(id: "sunburst", nameKey: "pad_sunburst", unlock: .premium),
+
+        // The pad shelf gains the same rungs as the friends shelf, so the two
+        // read as siblings: a golden-pond capstone, two streak pads, and a top
+        // coin band. Pads are priced under friends throughout - a pad is what
+        // the duckling stands on, not what it is - so the top band is 400.
+        PadItem(id: "crownlily", nameKey: "pad_crownlily", unlock: .bonusReward(30)),
+        PadItem(id: "ember", nameKey: "pad_ember", unlock: .streakReward(50)),
+        PadItem(id: "frost", nameKey: "pad_frost", unlock: .streakReward(75)),
+        PadItem(id: "pearl", nameKey: "pad_pearl", unlock: .coins(price: CoinBank.pricePadLegendary)),
+        PadItem(id: "obsidian", nameKey: "pad_obsidian", unlock: .coins(price: CoinBank.pricePadLegendary)),
+        PadItem(id: "origami", nameKey: "pad_origami", unlock: .coins(price: CoinBank.pricePadLegendary)),
+        PadItem(id: "rune", nameKey: "pad_rune", unlock: .coins(price: CoinBank.pricePadLegendary)),
+        PadItem(id: "prism", nameKey: "pad_prism", unlock: .coins(price: CoinBank.pricePadLegendary)),
     ]
 
     /// Every shelf, sorted onto the how-you-get-it ladder. These are the lists
@@ -299,7 +407,7 @@ enum Catalog {
     /// Android's `GoldenPondLadderTest` proves exactly one thing sits on every
     /// rung from 1 to the last golden pond, so this never has to choose between
     /// two.
-    static func bonusPrizeAt(_ count: Int) -> Reward? {
+    static func bonusPrizesAt(_ count: Int) -> [Reward] {
         func rung(_ unlock: Unlock) -> Int? {
             switch unlock {
             case .bonusReward(let c): return c
@@ -307,12 +415,37 @@ enum Catalog {
             default: return nil
             }
         }
-        if let item = skins.first(where: { rung($0.unlock) == count }) { return .skin(item) }
-        if let item = pads.first(where: { rung($0.unlock) == count }) { return .pad(item) }
-        if let item = themes.first(where: { rung($0.unlock) == count }) { return .theme(item) }
-        if let item = PondCatalog.decor.first(where: { $0.bonusCount == count }) { return .decor(item) }
-        return nil
+        var out: [Reward] = []
+        out += skins.filter { rung($0.unlock) == count }.map { Reward.skin($0) }
+        out += pads.filter { rung($0.unlock) == count }.map { Reward.pad($0) }
+        out += themes.filter { rung($0.unlock) == count }.map { Reward.theme($0) }
+        out += PondCatalog.decor.filter { $0.bonusCount == count }.map { Reward.decor($0) }
+        return out
     }
+
+    /// The friends that come with a theme, in shelf order.
+    static func friendsOfTheme(_ themeId: String) -> [SkinItem] {
+        skins.filter { $0.unlock.themeFriendOf == themeId }
+    }
+
+    /// The theme a friend belongs to, or nil if it is not a theme friend.
+    static func themeOfFriend(_ skin: SkinItem) -> ThemeItem? {
+        skin.unlock.themeFriendOf.flatMap { id in themes.first { $0.id == id } }
+    }
+
+    /// The five friends money buys outright, in shelf order.
+    static let specialSkins: [SkinItem] = skins.filter(\.unlock.isMoney)
+
+    /// Every theme that has a pair of friends, in shelf order.
+    static let themesWithFriends: [ThemeItem] = themes.filter { !friendsOfTheme($0.id).isEmpty }
+
+    /// Everything StoreKit sells, and everything it must be asked about.
+    ///
+    /// The one list the store queries for prices and the one list the shop
+    /// checks before drawing a price. Anything not on it is bought with coins
+    /// or earned by playing, and must never reach a purchase.
+    static let moneyProductIds: [String] =
+        [premiumId, hintsId] + coinPackIds + specialSkins.map { skinProductId($0.id) }
 
     /// The product id a `Reward` is owned under.
     static func productIdOf(_ reward: Reward) -> String {

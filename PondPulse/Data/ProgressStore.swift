@@ -150,6 +150,15 @@ struct ProgressStore {
         /// Owned decorations the player has taken back out of the pond.
         static let decorStored = "decor_stored"
 
+        /// The surface of the water and the bank around it, kept apart from the
+        /// sky. Bought like a sky and stored like one; the first of each is free
+        /// and is what an unarranged pond looks like.
+        static let pondWater = "pond_water"
+        static let pondShore = "pond_shore"
+
+        /// The three saved ponds, one `PondLayout` string each.
+        static func layout(_ slot: Int) -> String { "pond_layout_\(slot)" }
+
         static func stars(_ levelId: String) -> String { "stars_\(levelId)" }
         static func rushBest(_ durationSec: Int) -> String { "rush_best_\(durationSec)" }
         static func miniBest(_ gameId: String) -> String { "mini_best_\(gameId)" }
@@ -259,6 +268,16 @@ struct ProgressStore {
     /// Owned decorations currently out of the water and off the bank.
     var decorStored: Set<String> { Set(defaults.stringArray(forKey: Keys.decorStored) ?? []) }
 
+    var pondWater: String { defaults.string(forKey: Keys.pondWater) ?? "clear" }
+    var pondShore: String { defaults.string(forKey: Keys.pondShore) ?? "meadow" }
+
+    /// The saved ponds, by slot. A slot nothing was ever saved into decodes to
+    /// an empty `PondLayout` rather than being absent, so the tab can draw three
+    /// thumbnails without asking whether each one exists.
+    var pondLayouts: [PondLayout] {
+        (0..<PondCatalog.layoutSlots).map { PondLayout.decode(defaults.string(forKey: Keys.layout($0))) }
+    }
+
     /// Hints remaining; irrelevant for premium owners, who have unlimited.
     var hintsLeft: Int { defaults.object(forKey: Keys.hintsLeft) as? Int ?? Self.freeHints }
 
@@ -280,6 +299,58 @@ struct ProgressStore {
     func setDebugTools(_ value: Bool) { defaults.set(value, forKey: Keys.debugTools) }
     func setUnlockAll(_ value: Bool) { defaults.set(value, forKey: Keys.unlockAll) }
     func setPondWeather(_ id: String) { defaults.set(id, forKey: Keys.pondWeather) }
+    func setPondWater(_ id: String) { defaults.set(id, forKey: Keys.pondWater) }
+    func setPondShore(_ id: String) { defaults.set(id, forKey: Keys.pondShore) }
+
+    /// Saves the pond exactly as it stands into `slot`.
+    ///
+    /// `onPond` comes from the caller: which decoration is *owned* is a question
+    /// this file cannot answer, since a golden pond can hand one over without it
+    /// ever entering the owned set. Everything else is read here, so the
+    /// snapshot is of a single moment.
+    func savePondLayout(_ slot: Int, onPond: [String: CGPoint]) {
+        let layout = PondLayout(
+            weather: pondWeather,
+            water: pondWater,
+            shore: pondShore,
+            friends: pondFriends,
+            stored: decorStored,
+            // Every dragged position, plus wherever the on-pond ones are
+            // standing right now - including the ones still at their catalogue
+            // anchor, which the stored map has never heard of.
+            spots: decorSpots.merging(onPond) { _, new in new },
+            inPond: Set(onPond.keys)
+        )
+        defaults.set(layout.encoded(), forKey: Keys.layout(slot))
+    }
+
+    /// Puts a saved pond back, or does nothing if the slot is empty.
+    ///
+    /// It restores what was *arranged*, never what is owned: everything that
+    /// draws the pond already filters by ownership, so a stale name is simply
+    /// not drawn, and comes back if the item is ever owned again.
+    @discardableResult
+    func applyPondLayout(_ slot: Int) -> Bool {
+        let layout = PondLayout.decode(defaults.string(forKey: Keys.layout(slot)))
+        guard !layout.isEmpty else { return false }
+        restorePondLayout(layout)
+        return true
+    }
+
+    /// Puts a pond back that was never in a slot - how Undo reverses a switch.
+    func restorePondLayout(_ layout: PondLayout) {
+        setPondWeather(layout.weather)
+        setPondWater(layout.water)
+        setPondShore(layout.shore)
+        setPondFriends(layout.friends)
+        setDecorStored(layout.stored)
+        defaults.set(
+            layout.spots.map { "\($0.key):\($0.value.x),\($0.value.y)" }.joined(separator: ";"),
+            forKey: Keys.decorSpots
+        )
+    }
+
+    func clearPondLayout(_ slot: Int) { defaults.removeObject(forKey: Keys.layout(slot)) }
 
     func setLanguage(_ language: Language?) {
         if let language {
@@ -318,6 +389,12 @@ struct ProgressStore {
             .map { "\($0.key):\($0.value.x),\($0.value.y)" }
             .joined(separator: ";")
         defaults.set(encoded, forKey: Keys.decorSpots)
+    }
+
+    /// Replaces the whole put-away set at once - used when a saved pond is
+    /// restored, where the set arrives as a set rather than one id at a time.
+    func setDecorStored(_ ids: Set<String>) {
+        defaults.set(Array(ids).sorted(), forKey: Keys.decorStored)
     }
 
     /// Takes a decoration out of the pond, or puts it back.
@@ -488,9 +565,11 @@ struct ProgressStore {
         for sec in Self.rushDurations { defaults.removeObject(forKey: Keys.rushBest(sec)) }
         for game in PondCatalog.games { defaults.removeObject(forKey: Keys.miniBest(game.id)) }
 
-        // Everything bought with coins goes; premium is the one thing money
-        // bought outright, so it is the one thing that stays.
-        setOwned(owned.filter { $0 == Catalog.premiumId })
+        // Everything bought with coins goes; everything bought with money
+        // stays. That used to mean premium alone - it now also means the five
+        // special friends, and a reset that repossessed a friend somebody paid
+        // for would be a refund request, not a fresh start.
+        setOwned(owned.filter { Catalog.moneyProductIds.contains($0) })
 
         defaults.removeObject(forKey: Keys.hintedLevels)
         defaults.removeObject(forKey: Keys.hintsLeft)
@@ -522,5 +601,11 @@ struct ProgressStore {
         defaults.removeObject(forKey: Keys.pondSlots)
         defaults.removeObject(forKey: Keys.decorSpots)
         defaults.removeObject(forKey: Keys.decorStored)
+        defaults.removeObject(forKey: Keys.pondWater)
+        defaults.removeObject(forKey: Keys.pondShore)
+        // The saved ponds go with the pond they were saved from. Keeping them
+        // would leave a "fresh" save one tap away from the fully decorated pond
+        // the reset was supposed to clear.
+        for slot in 0..<PondCatalog.layoutSlots { clearPondLayout(slot) }
     }
 }

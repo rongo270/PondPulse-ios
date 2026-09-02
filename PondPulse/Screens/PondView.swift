@@ -201,9 +201,15 @@ struct PondView: View {
 
     var body: some View {
         let cast = vm.pondCast()
-        let decorOwned = PondCatalog.decor.filter {
-            vm.owned.contains(PondCatalog.decorProductId($0.id)) && !vm.decorStored.contains($0.id)
-        }
+        // Asked of the view model rather than of the owned set: a decoration
+        // won from a golden pond is never written to that set, so this used to
+        // draw the Decorate screen's pond minus every decoration the player had
+        // *earned*. Sorted down the screen so a thing lower on the bank stands
+        // in front of a thing higher up it - with thirty decorations, a bench
+        // behind the fence it is in front of is the first thing anyone notices.
+        let decorOwned = PondCatalog.decor
+            .filter { vm.isDecorOwned($0) && !vm.decorStored.contains($0.id) }
+            .sorted { (vm.decorSpots[$0.id] ?? $0.at).y < (vm.decorSpots[$1.id] ?? $1.at).y }
 
         ZStack {
             pondCanvas(cast: cast, decorOwned: decorOwned)
@@ -277,7 +283,8 @@ struct PondView: View {
                 let w = size.width
                 let h = size.height
 
-                drawPondBasin(&ctx, weatherId: vm.pondWeather, size: size, palette: palette, time: time)
+                drawPondBasin(&ctx, weatherId: vm.pondWeather, size: size, palette: palette, time: time,
+                              waterId: vm.pondWater, shoreId: vm.pondShore)
 
                 for item in decorOwned {
                     let at = vm.decorSpots[item.id] ?? item.at
@@ -678,6 +685,13 @@ private func lockLabel(_ unlock: Unlock, _ strings: Strings) -> String {
     case .bonusReward(let count): return strings["bonus_locked_shop", count]
     case .streakReward(let days): return strings["collection_streak_lock", days]
     case .premium: return strings["collection_premium_lock"]
+    case .themeFriend(let themeId):
+        let name = Catalog.themes.first { $0.id == themeId }?.nameKey ?? ""
+        return strings["friends_theme_lock", strings[name]]
+    // A special friend falls through to "in the shop" like any other purchase:
+    // the roster has no StoreKit prices to hand, and a hard-coded "$0.99" would
+    // be wrong in every country that does not use dollars.
+    case .money: return strings["collection_shop_lock"]
     default: return strings["collection_shop_lock"]
     }
 }

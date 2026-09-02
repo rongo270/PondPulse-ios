@@ -22,6 +22,45 @@ struct PacksView: View {
     /// "back to your pond" pill can offer to take them there.
     @State private var currentOffScreen = false
 
+    /// One run of pack cards. Called twice, either side of the premium banner.
+    @ViewBuilder
+    private func packGrid(_ packs: [(offset: Int, element: Pack)], currentPackId: String) -> some View {
+        if !packs.isEmpty {
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: packColumns),
+                spacing: 10
+            ) {
+                ForEach(packs, id: \.element.id) { _, pack in
+                    let premiumLocked = vm.isPackPremiumLocked(pack)
+                    let solved = vm.packSolved(pack)
+                    PackCard(
+                        pack: pack,
+                        solved: solved,
+                        stars: vm.packStars(pack),
+                        state: {
+                            if premiumLocked { return .premium }
+                            if !vm.isPackUnlocked(pack) { return .locked }
+                            if pack.id == currentPackId { return .current }
+                            if solved == pack.levels.count { return .cleared }
+                            return .open
+                        }()
+                    ) {
+                        if premiumLocked {
+                            vm.navigate(.shop)
+                        } else {
+                            vm.navigate(.packLevels(packId: pack.id))
+                        }
+                    }
+                    // Identity is the pack, not a row index: the grid must
+                    // never reuse one pack's card for another's.
+                    .id(pack.id)
+                    .onAppear { if pack.id == currentPackId { currentOffScreen = false } }
+                    .onDisappear { if pack.id == currentPackId { currentOffScreen = true } }
+                }
+            }
+        }
+    }
+
     var body: some View {
         let currentPackId = vm.currentPack().id
         let firstPremiumIndex = Levels.packs.firstIndex { vm.isPackPremiumLocked($0) }
@@ -44,53 +83,34 @@ struct PacksView: View {
 
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVGrid(
-                            columns: Array(
-                                repeating: GridItem(.flexible(), spacing: 10),
-                                count: packColumns
-                            ),
-                            spacing: 10
-                        ) {
-                            ForEach(Array(Levels.packs.enumerated()), id: \.element.id) { index, pack in
-                                let premiumLocked = vm.isPackPremiumLocked(pack)
-                                if premiumLocked, index == firstPremiumIndex {
-                                    PremiumUpsellBanner(
-                                        levelCount: vm.premiumLevelCount(),
-                                        price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice)
-                                    ) {
-                                        vm.navigate(.shop)
-                                    }
-                                    .gridCellColumns(packColumns)
-                                }
-                                let solved = vm.packSolved(pack)
-                                PackCard(
-                                    pack: pack,
-                                    solved: solved,
-                                    stars: vm.packStars(pack),
-                                    state: {
-                                        if premiumLocked { return .premium }
-                                        if !vm.isPackUnlocked(pack) { return .locked }
-                                        if pack.id == currentPackId { return .current }
-                                        if solved == pack.levels.count { return .cleared }
-                                        return .open
-                                    }()
+                        // Two grids with the banner between them, not one grid
+                        // with the banner inside it.
+                        //
+                        // `gridCellColumns` is a `Grid`/`GridRow` modifier and
+                        // has **no effect** inside a `LazyVGrid` - it compiles,
+                        // it is silently ignored, and the banner was crushed
+                        // into a single half-width cell, wrapping one word per
+                        // line. Splitting the grid is the only way a full-width
+                        // row can sit inside a lazy grid.
+                        let split = firstPremiumIndex ?? Levels.packs.count
+                        VStack(spacing: 10) {
+                            packGrid(Array(Levels.packs.enumerated().prefix(split)), currentPackId: currentPackId)
+                            if firstPremiumIndex != nil {
+                                PremiumUpsellBanner(
+                                    levelCount: vm.premiumLevelCount(),
+                                    price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice)
                                 ) {
-                                    if premiumLocked {
-                                        vm.navigate(.shop)
-                                    } else {
-                                        vm.navigate(.packLevels(packId: pack.id))
-                                    }
+                                    vm.navigate(.shop)
                                 }
-                                // Identity is the pack, not a row index: the grid
-                                // must never reuse one pack's card for another's.
-                                .id(pack.id)
-                                .onAppear { if pack.id == currentPackId { currentOffScreen = false } }
-                                .onDisappear { if pack.id == currentPackId { currentOffScreen = true } }
                             }
+                            packGrid(Array(Levels.packs.enumerated().dropFirst(split)), currentPackId: currentPackId)
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
-                        .padding(.bottom, 40)
+                        // Room for the floating "back to your pond" pill, which
+                        // sits over the scroll view and used to land on top of
+                        // the last row of cards.
+                        .padding(.bottom, 96)
                     }
                     .onAppear {
                         if currentPackId != Levels.packs[0].id {

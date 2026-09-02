@@ -107,14 +107,17 @@ struct PackLevelsView: View {
                 // seventy-level pack.
                 // The rung this golden pond sits on, and so the prize it pays.
                 let rung = (Levels.bonusPonds.firstIndex { $0.id == stage.bonus.level.id } ?? -1) + 1
-                let prize = Catalog.bonusPrizeAt(rung)
+                let prizes = Catalog.bonusPrizesAt(rung)
                 BonusPondRow(
                     stars: vm.stars[stage.bonus.level.id] ?? 0,
                     unlocked: vm.isBonusUnlocked(pack, stage.bonus),
-                    prize: prize,
-                    prizeEarned: prize.map {
+                    prizes: prizes,
+                    // Earned only when *all* of them are. The last golden pond
+                    // pays three things, and a tick against a row where two of
+                    // the three had arrived would be a lie about the third.
+                    prizeEarned: !prizes.isEmpty && prizes.allSatisfy {
                         vm.isOwned(Catalog.unlockOf($0), productId: Catalog.productIdOf($0))
-                    } ?? false,
+                    },
                     firstLevel: stage.firstLevelNumber,
                     opensAt: stage.lastLevelNumber
                 ) {
@@ -233,7 +236,7 @@ private struct BonusPondRow: View {
     /// locked pond that will not say what it pays is a locked pond nobody has a
     /// reason to unlock, and hints, which is what these used to give, were never
     /// worth showing off.
-    let prize: Catalog.Reward?
+    let prizes: [Catalog.Reward]
     /// Already in the player's hands, so the box records it rather than sells it.
     let prizeEarned: Bool
     let firstLevel: Int
@@ -270,7 +273,10 @@ private struct BonusPondRow: View {
             .padding(.vertical, 11)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let prize {
+            // Every prize on the rung, one line each. Most pay one; the
+            // thirtieth pays three, and a finale showing only the first of them
+            // would hand two over in silence.
+            ForEach(Array(prizes.enumerated()), id: \.offset) { _, prize in
                 PrizeLine(prize: prize, unlocked: unlocked, earned: prizeEarned)
             }
             }

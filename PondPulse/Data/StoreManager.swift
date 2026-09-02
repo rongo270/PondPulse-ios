@@ -27,7 +27,7 @@ final class StoreManager {
     /// Every id that can be bought with money: premium, the hint pack, the
     /// three coin packs. Cosmetics are coin purchases and never appear here.
     static var allProductIds: [String] {
-        [Catalog.premiumId, Catalog.hintsId] + Catalog.coinPackIds
+        Catalog.moneyProductIds
     }
 
     /// A verified non-consumable entitlement appeared (purchase, restore, or launch sync).
