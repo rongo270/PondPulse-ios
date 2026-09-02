@@ -100,8 +100,8 @@ struct ProgressStore {
         /// it on.
         static let debugTools = "debug_tools"
 
-        /// Testing: "Unlock everything". Only reachable while `FreeMode.enabled`,
-        /// which is false on iOS - so this reads as false whatever it holds.
+        /// Testing: "Unlock everything". Only reachable while
+        /// `FreeMode.unlockable` - a debug build, or a closed-testing one.
         static let unlockAll = "test_unlock_all"
 
         /// Golden ponds that have already paid out their prize. Kept apart from
@@ -173,10 +173,18 @@ struct ProgressStore {
 
     var debugTools: Bool { defaults.bool(forKey: Keys.debugTools) }
 
-    /// Whether the tester has asked for everything to be open. Always false
-    /// unless `FreeMode.enabled`: the switch that sets it is not built into a
-    /// live build, and this ignores anything an old preference left behind.
-    var unlockAll: Bool { FreeMode.enabled && defaults.bool(forKey: Keys.unlockAll) }
+    /// Whether the tester has asked for everything to be open.
+    ///
+    /// Gated on `FreeMode.unlockable` rather than on the preference alone, so a
+    /// release build with the economy live ignores anything an old preference
+    /// left behind. It used to be gated on `FreeMode.enabled`, which is false
+    /// here - so the switch was drawn in Settings, stored on tap, and read back
+    /// as `false` for ever.
+    var unlockAll: Bool { FreeMode.unlockable && defaults.bool(forKey: Keys.unlockAll) }
+
+    /// Whether nothing may be charged right now - closed testing, or a tester
+    /// who has "Unlock everything" on. Every spend path asks this.
+    var everythingFree: Bool { FreeMode.enabled || unlockAll }
 
     /// levelId -> stars (0 = unsolved), golden ponds included.
     var stars: [String: Int] {
@@ -470,10 +478,11 @@ struct ProgressStore {
     /// `derived` comes from the caller because only it knows the level list.
     @discardableResult
     private func spending(derived: Int, price: Int, effect: () -> Void) -> Bool {
-        // Closed testing: the goods are handed over and the ledger is left
-        // alone, so nothing is spent and the balance never moves. The price
-        // itself is untouched - see `FreeMode`.
-        if FreeMode.enabled {
+        // Closed testing, or a tester with "Unlock everything" on: the goods
+        // are handed over and the ledger is left alone, so nothing is spent and
+        // the balance never moves. The price itself is untouched - see
+        // `FreeMode`.
+        if everythingFree {
             effect()
             return true
         }
@@ -534,7 +543,7 @@ struct ProgressStore {
     func buyPondSlot(derived: Int) -> Bool {
         let extra = defaults.integer(forKey: Keys.pondSlots)
         guard let price = CoinBank.slotPrice(slots: CoinBank.baseSlots + extra) else { return false }
-        if !FreeMode.enabled {
+        if !everythingFree {
             guard let after = CoinBank.spend(
                 derived: derived, granted: coinsGranted, spent: coinsSpent, price: price
             ) else { return false }

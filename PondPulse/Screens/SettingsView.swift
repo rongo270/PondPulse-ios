@@ -19,13 +19,15 @@ struct SettingsView: View {
     /// Testing tools. A debug build has always had them; a release build only
     /// does while `FreeMode.enabled`, which is what a closed-testing build is.
     /// Turning that flag off takes the whole section out again, so a shipped
-    /// pond can never grow a level skipper.
-    private var showsTesting: Bool {
-        #if DEBUG
-        return true
-        #else
-        return FreeMode.enabled
-        #endif
+    /// pond can never grow a level skipper. `FreeMode.unlockable` is the same
+    /// question the switch itself is gated on, asked once.
+    private var showsTesting: Bool { FreeMode.unlockable }
+
+    /// The closed-testing line is only true while the flag is on. With the
+    /// economy live, a debug build still has the tools, and the switch below is
+    /// what makes it free - the build itself is not.
+    private var testingDescKey: String {
+        FreeMode.enabled ? "settings_testing_desc" : "settings_testing_desc_debug"
     }
 
     /// In a debug build the skipper is a developer tool; in a closed-testing
@@ -73,7 +75,7 @@ struct SettingsView: View {
                                 Text(strings["settings_testing"])
                                     .font(.game(14, .bold))
                                     .foregroundStyle(palette.accent)
-                                Text(strings["settings_testing_desc"])
+                                Text(strings[testingDescKey])
                                     .font(.game(12))
                                     .foregroundStyle(palette.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)

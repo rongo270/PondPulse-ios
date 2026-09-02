@@ -68,6 +68,26 @@ private enum LegacyDecorTab: Hashable {
     case decor, sky
 }
 
+/// What the decorations grid is showing.
+///
+/// Filters rather than a search box: there are thirty of them, they have
+/// pictures, and typing "hammock" is slower than tapping "Shore".
+private enum DecorFilter: String, Hashable, CaseIterable, Identifiable {
+    case all, water, shore, owned, locked
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .all: return "decorate_filter_all"
+        case .water: return "decorate_filter_water"
+        case .shore: return "decorate_filter_shore"
+        case .owned: return "decorate_filter_owned"
+        case .locked: return "decorate_filter_locked"
+        }
+    }
+}
+
 /// How far onto the grass a shore item's middle must sit.
 private let shoreMargin: CGFloat = 0.018
 
@@ -132,6 +152,10 @@ struct DecorateView: View {
     @Environment(\.strings) private var strings
 
     @State private var tab: DecorTab = .decor
+
+    /// What the decorations grid is filtered to, and whether it is open taller.
+    @State private var filter: DecorFilter = .all
+    @State private var gridExpanded = false
 
     /// The undo stack. Session-only and deliberately so: it is a safety net for
     /// the arrangement being made right now, not a version history.
@@ -352,7 +376,7 @@ struct DecorateView: View {
             HStack(spacing: 8) {
                 ForEach(items) { surface in
                     let pid = productId(surface.id)
-                    let owned = surface.price == 0 || vm.owned.contains(pid)
+                    let owned = vm.isSurfaceOwned(surface, productId: pid)
                     SurfaceChip(
                         nameKey: surface.nameKey,
                         price: surface.price,
@@ -554,22 +578,7 @@ struct DecorateView: View {
 
             switch tab {
             case .decor:
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(PondCatalog.decor) { item in
-                            DecorChip(
-                                item: item,
-                                owned: vm.isDecorOwned(item),
-                                out: vm.decorStored.contains(item.id),
-                                selected: selected == item.id,
-                                affordable: vm.canAfford(item.price)
-                            ) {
-                                selected = selected == item.id ? nil : item.id
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                }
+                decorGrid
                 decorActions
 
             case .sky:
@@ -624,6 +633,88 @@ struct DecorateView: View {
             palette.surfaceHigh,
             in: UnevenRoundedRectangle(topLeadingRadius: 22, topTrailingRadius: 22, style: .continuous)
         )
+    }
+
+    /// The decorations, as a filtered grid that opens taller.
+    ///
+    /// It was one sideways strip of thirty, which is four chips seen at a time
+    /// and twenty-six behind a swipe that nothing on the screen advertises.
+    /// Collapsed this is one row with a sliver of the next - about as much as
+    /// can sit under a pond without squashing it - and the chevron opens it to
+    /// two and a half, which on most phones is the whole shelf in two flicks.
+    /// The sliver is the only thing that says the grid scrolls; cutting a card
+    /// in half instead reads as a clipping bug.
+    @ViewBuilder
+    private var decorGrid: some View {
+        let ownedCount = PondCatalog.decor.count { vm.isDecorOwned($0) }
+        let shown = PondCatalog.decor.filter { item in
+            switch filter {
+            case .all: return true
+            case .water: return item.zone == .water
+            case .shore: return item.zone == .shore
+            case .owned: return vm.isDecorOwned(item)
+            case .locked: return !vm.isDecorOwned(item)
+            }
+        }
+
+        HStack(spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(DecorFilter.allCases) { entry in
+                        FilterChip(text: strings[entry.titleKey], selected: filter == entry) {
+                            filter = entry
+                        }
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            Text(strings["decorate_owned_count", ownedCount, PondCatalog.decor.count])
+                .font(.game(11))
+                .foregroundStyle(palette.textSecondary)
+                .fixedSize()
+            Button {
+                gridExpanded.toggle()
+            } label: {
+                Image(systemName: gridExpanded ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.textSecondary)
+                    .frame(width: 28, height: 28)
+            }
+            .accessibilityLabel(strings[gridExpanded ? "decorate_collapse" : "decorate_expand"])
+        }
+        .padding(.horizontal, 14)
+
+        if shown.isEmpty {
+            Text(strings["decorate_filter_empty"])
+                .font(.game(12))
+                .foregroundStyle(palette.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+        } else {
+            ScrollView(showsIndicators: false) {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 84), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(shown) { item in
+                        DecorChip(
+                            item: item,
+                            owned: vm.isDecorOwned(item),
+                            out: vm.decorStored.contains(item.id),
+                            selected: selected == item.id,
+                            affordable: vm.canAfford(item.price)
+                        ) {
+                            selected = selected == item.id ? nil : item.id
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+            .frame(height: gridExpanded ? 262 : 134)
+            .animation(.easeInOut(duration: 0.18), value: gridExpanded)
+        }
     }
 
     /// What you can do with whatever is selected: buy it, or put it in and out.
@@ -746,6 +837,36 @@ private struct TrayTab: View {
     }
 }
 
+/// A smaller tab, for the filters over the decorations grid.
+///
+/// Tinted and outlined rather than filled when selected: a row of filters sits
+/// directly under a row of tabs, and two rows of solid accent capsules read as
+/// one control with two selected things in it.
+private struct FilterChip: View {
+    @Environment(\.palette) private var palette
+    let text: String
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(text)
+                .font(.game(11, .bold))
+                .foregroundStyle(selected ? palette.accent : palette.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    selected ? palette.accent.opacity(0.22) : palette.surface,
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().strokeBorder(selected ? palette.accent : .clear, lineWidth: 1)
+                )
+        }
+        .buttonStyle(SquishyButtonStyle())
+    }
+}
+
 /// Open water in the candidate surface, in the light this pond is in.
 ///
 /// It draws the water but **not** the sky's overlay. First cut drew both, on
@@ -806,7 +927,7 @@ private struct DecorChip: View {
                         palette: palette, phase: 0.7
                     )
                 }
-                .frame(width: 80, height: 80)
+                .aspectRatio(1, contentMode: .fit)
                 .overlay(alignment: .topTrailing) {
                     if owned && !out {
                         Image(systemName: "checkmark")
@@ -842,7 +963,7 @@ private struct DecorChip: View {
                 }
             }
             .padding(6)
-            .frame(width: 92)
+            .frame(maxWidth: .infinity)
             .background(palette.surface, in: shape)
             .overlay(shape.strokeBorder(selected ? palette.accent : .clear, lineWidth: 2))
         }

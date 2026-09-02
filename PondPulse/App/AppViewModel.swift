@@ -74,7 +74,8 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var themeId: String
     @Published private(set) var skinId: String
     @Published private(set) var padId: String
-    @Published private(set) var hintsLeft: Int
+    /// Hints as stored. Read `hintsLeft`, which folds in the tester top-up.
+    @Published private(set) var hintsStored: Int
     @Published private(set) var hintedLevels: Set<String>
     /// In-app language override; nil follows the device language.
     @Published private(set) var languageOverride: Language?
@@ -83,9 +84,19 @@ final class AppViewModel: ObservableObject {
     /// debug build, so it is always false in anything that reaches a player.
     @Published private(set) var debugTools: Bool
 
-    /// Testing only, and dead while `FreeMode.enabled` is false - which it is on
-    /// iOS. Kept so the two view models stay the same shape.
+    /// Whether the tester has switched "Unlock everything" on. Settable in a
+    /// debug build, and in a closed-testing one; nowhere else.
     @Published private(set) var unlockAllFlag: Bool
+
+    /// Hints in hand.
+    ///
+    /// "Unlock everything" tops the counter up rather than leaning on the
+    /// premium upgrade it also grants: premium reads as "Unlimited" inside a
+    /// pond, but the shop still quotes a number, and a tester who cannot see
+    /// the hint count going up cannot test hints. Shown, never banked - the
+    /// stored half is untouched, so turning the switch off puts the honest
+    /// number straight back.
+    var hintsLeft: Int { hintsStored + (unlockAllFlag ? FreeMode.debugHints : 0) }
 
     // Coins ------------------------------------------------------------------
     @Published private(set) var coinsGranted: Int
@@ -126,7 +137,7 @@ final class AppViewModel: ObservableObject {
         themeId = store.selectedTheme
         skinId = store.selectedSkin
         padId = store.selectedPad
-        hintsLeft = store.hintsLeft
+        hintsStored = store.hintsLeft
         hintedLevels = store.hintedLevels
         languageOverride = store.language
         debugTools = store.debugTools
@@ -208,7 +219,16 @@ final class AppViewModel: ObservableObject {
 
     var totalStars: Int { stars.values.reduce(0, +) }
 
-    var isPremium: Bool { owned.contains(Catalog.premiumId) }
+    /// Whether the premium upgrade is in hand.
+    ///
+    /// Asked of the *effective* set, not the raw one: "Unlock everything" folds
+    /// premium in like every other product, and a tester who has it on but is
+    /// still shown a locked pond, a hint counter and a card selling premium has
+    /// not unlocked everything. Spelled out rather than built as a set union,
+    /// because this is read on nearly every screen.
+    var isPremium: Bool {
+        owned.contains(Catalog.premiumId) || unlockAllFlag || FreeMode.enabled
+    }
 
     var palette: PondPalette { Catalog.themeById(themeId).palette }
 
@@ -218,9 +238,10 @@ final class AppViewModel: ObservableObject {
 
     /// Everything the player owns, with the free-mode grants folded in.
     ///
-    /// Neither fold is ever written back to storage. Both are inert on iOS,
-    /// where `FreeMode.enabled` is false - they exist so the ownership rules
-    /// read the same on both platforms.
+    /// Neither fold is ever written back to storage. The second is inert on a
+    /// release build, where `FreeMode.enabled` is false; the first is what
+    /// "Unlock everything" hands a tester, and the token in it is what answers
+    /// for the items that are earned rather than bought - see `isOwned`.
     var effectiveOwned: Set<String> {
         if unlockAllFlag {
             return owned.union(Self.everyProductId).union([FreeMode.unlockAllToken])
@@ -424,6 +445,17 @@ final class AppViewModel: ObservableObject {
             || ownedIds.contains(PondCatalog.weatherProductId(weather.id))
     }
 
+    /// Whether a water or a bank is the player's. The same question
+    /// `isWeatherOwned` answers, asked of the other two shelves - Decorate used
+    /// to look in the raw `owned` set itself, which is the one set that does not
+    /// know what a tester or a golden pond has been handed.
+    func isSurfaceOwned(_ surface: PondCatalog.Surface, productId: String) -> Bool {
+        if surface.price == 0 { return true }
+        if Catalog.cosmeticsUnlocked { return true }
+        let ownedIds = effectiveOwned
+        return ownedIds.contains(FreeMode.unlockAllToken) || ownedIds.contains(productId)
+    }
+
     // MARK: - Coins
 
     /// The two halves of the star ledger, which pay at different rates.
@@ -464,8 +496,14 @@ final class AppViewModel: ObservableObject {
     }
 
     /// What the player can spend right now.
+    ///
+    /// "Unlock everything" adds `FreeMode.debugCoins` on top, and only here: the
+    /// pile is *shown*, never banked, so switching the tester tools off puts the
+    /// honest balance straight back. Nothing is debited while the switch is on
+    /// either - see `ProgressStore.spending`.
     var coins: Int {
         CoinBank.balance(derived: derivedCoins, granted: coinsGranted, spent: coinsSpent)
+            + (unlockAllFlag ? FreeMode.debugCoins : 0)
     }
 
     /// What the pond's games have paid out this week. Read as a pair so a stamp
@@ -490,7 +528,7 @@ final class AppViewModel: ObservableObject {
     @discardableResult
     func buyHints(count: Int) -> Bool {
         guard store.buyHints(derived: derivedCoins, count: count) else { return false }
-        hintsLeft = store.hintsLeft
+        hintsStored = store.hintsLeft
         coinsSpent = store.coinsSpent
         return true
     }
@@ -650,7 +688,7 @@ final class AppViewModel: ObservableObject {
         dailyStreakStored = store.dailyStreak
         dailyBestStreak = store.dailyBestStreak
         dailyTotal = store.dailyTotal
-        hintsLeft = store.hintsLeft
+        hintsStored = store.hintsLeft
         return payout
     }
 
@@ -716,8 +754,8 @@ final class AppViewModel: ObservableObject {
         debugTools = value
     }
 
-    /// Testing only: opens every pond and hands over every unlockable. Dead
-    /// while `FreeMode.enabled` is false, which it is on iOS.
+    /// Testing only: opens every pond, hands over every unlockable, tops up
+    /// coins and hints, and stops anything being charged. See `FreeMode`.
     func setUnlockAll(_ value: Bool) {
         store.setUnlockAll(value)
         unlockAllFlag = store.unlockAll
@@ -755,11 +793,13 @@ final class AppViewModel: ObservableObject {
     /// undo or a replay - never solves again from scratch and never costs a
     /// second hint.
     func useHint(levelId: String) {
-        // Closed testing: hints cost nothing, so the counter is left alone. The
-        // level is still remembered, so its glow stays free on a replay.
-        if !FreeMode.enabled && !hintedLevels.contains(levelId) {
-            store.setHintsLeft(hintsLeft - 1)
-            hintsLeft = store.hintsLeft
+        // Closed testing, or a tester with everything unlocked: hints cost
+        // nothing, so the counter is left alone. The level is still remembered,
+        // so its glow stays free on a replay.
+        let free = FreeMode.enabled || unlockAllFlag
+        if !free && !hintedLevels.contains(levelId) {
+            store.setHintsLeft(hintsStored - 1)
+            hintsStored = store.hintsLeft
         }
         hintedLevels.insert(levelId)
         store.setHintedLevels(hintedLevels)
@@ -820,8 +860,8 @@ final class AppViewModel: ObservableObject {
     }
 
     private func creditHints(_ count: Int) {
-        store.setHintsLeft(hintsLeft + count)
-        hintsLeft = store.hintsLeft
+        store.setHintsLeft(hintsStored + count)
+        hintsStored = store.hintsLeft
     }
 
     private func creditCoins(_ amount: Int) {
@@ -834,7 +874,7 @@ final class AppViewModel: ObservableObject {
         stars = store.stars
         rushBests = store.rushBests
         hintedLevels = store.hintedLevels
-        hintsLeft = store.hintsLeft
+        hintsStored = store.hintsLeft
         owned = store.owned
         themeId = store.selectedTheme
         skinId = store.selectedSkin
@@ -869,6 +909,10 @@ final class AppViewModel: ObservableObject {
         Catalog.pads.forEach { out.insert(Catalog.padProductId($0.id)) }
         PondCatalog.decor.forEach { out.insert(PondCatalog.decorProductId($0.id)) }
         PondCatalog.weathers.forEach { out.insert(PondCatalog.weatherProductId($0.id)) }
+        // The water and the bank are bought like a sky and were missing here,
+        // so "Unlock everything" opened every sky and no shoreline.
+        PondCatalog.waters.forEach { out.insert(PondCatalog.waterProductId($0.id)) }
+        PondCatalog.shores.forEach { out.insert(PondCatalog.shoreProductId($0.id)) }
         return out
     }()
 }

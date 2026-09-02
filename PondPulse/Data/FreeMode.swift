@@ -38,6 +38,35 @@ enum FreeMode {
     /// `false` on iOS - the economy is live. See the type comment before flipping.
     static let enabled = false
 
+    /// Whether the **Unlock everything** switch is allowed to be on at all.
+    ///
+    /// It used to be `enabled` alone, and `enabled` is false here - so Settings
+    /// drew the switch in a debug build, `ProgressStore` stored it on tap, and
+    /// the property that reads it answered `false` for ever. A debug build is a
+    /// build nobody pays with, so the switch is exactly as safe there as it was
+    /// in closed testing; a release build with the economy on still has no path
+    /// to it, because the section that holds it is not compiled in.
+    static var unlockable: Bool {
+        #if DEBUG
+        return true
+        #else
+        return enabled
+        #endif
+    }
+
+    /// The coin pile "Unlock everything" shows on top of the real balance.
+    ///
+    /// Shown, not banked - see `CoinBank`. It is folded into the *balance* in
+    /// `AppViewModel`, never into `coinsGranted`, so turning the switch off puts
+    /// the honest number straight back. Nothing is actually debited while it is
+    /// on either (`ProgressStore.spending` hands the goods over untouched), so a
+    /// tester cannot spend their way into a negative balance and leave it
+    /// behind.
+    static let debugCoins = 99_999
+
+    /// Hints the same switch adds to the counter, for the same reason.
+    static let debugHints = 999
+
     /// Marker dropped into the owned set while "Unlock everything" is on.
     ///
     /// It rides in the same set as the real product ids so every existing
@@ -47,6 +76,9 @@ enum FreeMode {
     static let unlockAllToken = "test_unlock_all"
 
     /// Whether a price is payable. Free mode says yes to all of them.
+    ///
+    /// "Unlock everything" needs no case here: it pays the price out of the
+    /// `debugCoins` pile already folded into the balance the caller passes in.
     static func affordable(coins: Int, price: Int) -> Bool {
         enabled || coins >= price
     }
