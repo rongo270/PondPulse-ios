@@ -92,6 +92,35 @@ struct SettingsView: View {
                                     isOn: Binding(get: { vm.debugTools }, set: { vm.setDebugTools($0) })
                                 )
                                 .padding(.top, 12)
+
+                                // Three grants rather than a second switch. The
+                                // switch above turns the economy off, which is
+                                // the one thing you cannot do while you are
+                                // trying to look at it: with everything free,
+                                // every price on every shelf stops meaning
+                                // anything. These hand over a specific thing at
+                                // the real price and leave the rest alone.
+                                Text(strings["settings_grants_desc"])
+                                    .font(.game(12))
+                                    .foregroundStyle(palette.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.top, 16)
+
+                                HStack(spacing: 8) {
+                                    grantButton(
+                                        icon: "circle.hexagongrid.fill",
+                                        title: strings["settings_grant_coins", 500]
+                                    ) { vm.testGrantCoins() }
+                                    grantButton(
+                                        icon: "pawprint.fill",
+                                        title: strings["settings_grant_friends"]
+                                    ) { vm.testGrantFriends() }
+                                    grantButton(
+                                        icon: "plus.circle.fill",
+                                        title: strings["settings_grant_seats", 2]
+                                    ) { vm.testGrantPondSlots() }
+                                }
+                                .padding(.top, 10)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 14)
@@ -186,6 +215,41 @@ extension SettingsView {
                 .labelsHidden()
                 .tint(palette.accent)
         }
+    }
+
+    /// One testing grant: a tap that hands over a specific thing and says so.
+    ///
+    /// Deliberately not a toggle. A toggle asks to be turned back off and these
+    /// cannot be - coins have been banked and friends have been handed over -
+    /// so a switch that would not switch back is a worse lie than a button.
+    fileprivate func grantButton(
+        icon: String, title: String, action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            action()
+            Haptics.tick(enabled: vm.haptics)
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(palette.accent)
+                Text(title)
+                    .font(.game(11, .semibold))
+                    .foregroundStyle(palette.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 6)
+            .background(palette.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(palette.accent.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(SquishyButtonStyle())
     }
 }
 

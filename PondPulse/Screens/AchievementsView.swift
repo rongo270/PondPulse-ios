@@ -2,18 +2,25 @@
 //  AchievementsView.swift
 //  PondPulse
 //
-//  The badge shelf - the iOS face of the Android ui/AchievementsScreen.kt.
+//  The badge shelf, in two screens.
 //
-//  Six families, four badges each, and every one of them says three things:
-//  what it wants, how far along you are, and what it pays. There is no Claim
-//  button and no "collect" step - the coins are part of the balance the moment
-//  the bar fills, because they are recomputed from progress rather than banked.
-//  The intro line says so in as many words, since a shelf of rewards with
-//  nothing to tap on reads as broken until somebody explains that it is not.
+//  **The shelf** is nine rows, one per family, and each row is one live bar:
+//  the goal you are working on, how far up it you are, and what it pays. It used
+//  to be twenty-four rows of four-rung families all open at once, which is a
+//  screen you scroll rather than read - and with the ladders now eleven rungs
+//  deep it would have been seventy-one.
 //
-//  Earned badges are not moved to the bottom or hidden. A family reads as a
-//  ladder - four rungs in order, the ones behind you filled in - and reordering
-//  it would take away the only thing that shows how far up it you are.
+//  **A ladder** is what a row opens into: every rung of one family in order,
+//  the ones behind you ticked, the one you are on lit, and every step still to
+//  come laid out with its price in ponds and its payout in coins. That last part
+//  is the reason the screen exists at all - "what is left" is the question a
+//  badge shelf is for, and a bar can only ever answer "not this".
+//
+//  There is no Claim button and no collect step: the coins are part of the
+//  balance the moment a bar fills, because they are recomputed from progress
+//  rather than banked. The intro line says so in as many words, since a shelf of
+//  rewards with nothing to tap on reads as broken until somebody explains that
+//  it is not.
 //
 
 import SwiftUI
@@ -35,7 +42,7 @@ struct AchievementsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(strings["ach_subtitle", earned, Achievements.all.count])
+                    Text(strings["ach_subtitle", earned, Achievements.totalRungs])
                         .font(.game(13))
                         .foregroundStyle(palette.textSecondary)
                     Text(strings["ach_intro"])
@@ -49,24 +56,21 @@ struct AchievementsView: View {
                             .foregroundStyle(palette.accent)
                     }
                     // What is closest, so the screen opens on something to aim
-                    // at rather than on twenty-four rows to read through.
+                    // at rather than on nine rows to read through.
                     Text(
-                        Achievements.nextUp(snapshot).map {
-                            strings["ach_next_up", strings[$0.nameKey]]
+                        Achievements.nextUp(snapshot).flatMap { standing in
+                            standing.next.map {
+                                strings["ach_next_up", standing.family.goalText(strings, $0.goal)]
+                            }
                         } ?? strings["ach_all_done"]
                     )
                     .font(.game(13))
                     .foregroundStyle(palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                    ForEach(Achievements.byFamily, id: \.0) { family, badges in
-                        FamilyHeader(
-                            family: family,
-                            done: badges.count { $0.isEarned(snapshot) },
-                            total: badges.count
-                        )
-                        ForEach(badges) { badge in
-                            BadgeRow(badge: badge, snapshot: snapshot)
+                    ForEach(Achievements.Family.allCases) { family in
+                        FamilyRow(standing: Achievements.standing(family, snapshot)) {
+                            vm.navigate(.achievementFamily(family.rawValue))
                         }
                     }
                 }
@@ -80,88 +84,198 @@ struct AchievementsView: View {
     }
 }
 
-private struct FamilyHeader: View {
-    let family: Achievements.Family
-    let done: Int
-    let total: Int
+// MARK: - The shelf
+
+/// One family, as one row: the goal being worked on and the bar towards it.
+///
+/// The row shows the *next* rung, never the last one earned. A shelf that told
+/// you what you had already done would be a receipt; the only useful thing it
+/// can say is what the next one wants and what it pays.
+private struct FamilyRow: View {
+    let standing: Achievements.Standing
+    let open: () -> Void
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: family.symbol)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(palette.textSecondary)
-            Text(strings[family.titleKey])
-                .font(.game(14, .bold))
-                .foregroundStyle(palette.textSecondary)
-            Spacer(minLength: 8)
-            Text(strings["shop_count", done, total])
-                .font(.game(12))
-                .foregroundStyle(done == total ? palette.accent : palette.textSecondary)
+        Button(action: open) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(standing.isComplete ? palette.accent.opacity(0.22) : palette.background)
+                    Image(systemName: standing.family.symbol)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(standing.isComplete ? palette.accent : palette.textSecondary)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(strings[standing.family.titleKey])
+                            .font(.game(15, .bold))
+                            .foregroundStyle(palette.textPrimary)
+                        Spacer(minLength: 4)
+                        Text(strings["ach_desc_progress", standing.done, standing.total])
+                            .font(.game(12))
+                            .foregroundStyle(standing.isComplete ? palette.accent : palette.textSecondary)
+                    }
+                    if let next = standing.next {
+                        Text(standing.family.goalText(strings, next.goal))
+                            .font(.game(12))
+                            .foregroundStyle(palette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(strings["ach_family_full"])
+                            .font(.game(12))
+                            .foregroundStyle(palette.accent)
+                    }
+                    ProgressBar(fraction: standing.fraction, done: standing.isComplete)
+                    HStack(spacing: 6) {
+                        Text(strings["ach_desc_progress", standing.value, standing.next?.goal ?? standing.value])
+                            .font(.game(11))
+                            .foregroundStyle(palette.textSecondary.opacity(0.85))
+                        Spacer(minLength: 4)
+                        if let next = standing.next {
+                            CoinIcon(size: 12)
+                            Text(strings["ach_reward", next.coins])
+                                .font(.game(13, .bold))
+                                .foregroundStyle(palette.accent)
+                        }
+                    }
+                }
+
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(palette.textSecondary.opacity(0.7))
+            }
+            .padding(12)
+            .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(standing.isComplete ? palette.accent.opacity(0.7) : .clear, lineWidth: 1.5)
+            )
         }
-        .padding(.top, 12)
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
     }
 }
 
-/// One badge: name, what it wants, a bar, and its coins.
-///
-/// The bar is drawn even when the badge is done - filled and in the accent -
-/// rather than being swapped for a tick on its own. The row keeps exactly the
-/// same shape and height either way, so a family does not jump about as badges
-/// land, which matters because several of them land at once on a good day.
-private struct BadgeRow: View {
-    let badge: Achievements.Badge
-    let snapshot: Achievements.Snapshot
+// MARK: - One ladder
+
+/// Every rung of one family, in order.
+struct AchievementFamilyView: View {
+    @ObservedObject var vm: AppViewModel
+    let family: Achievements.Family
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
 
     var body: some View {
-        let done = badge.isEarned(snapshot)
+        let standing = Achievements.standing(family, vm.achievements)
+        let pot = standing.rungs.reduce(0) { $0 + $1.coins }
+
+        VStack(spacing: 0) {
+            ScreenHeader(title: strings[family.titleKey], onBack: { vm.back() }) {
+                CoinChip(coins: vm.coins) { vm.navigate(.shop) }
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(strings["ach_subtitle", standing.done, standing.total])
+                        .font(.game(13))
+                        .foregroundStyle(palette.textSecondary)
+                    HStack(spacing: 6) {
+                        CoinIcon(size: 14)
+                        Text(strings["ach_coins_earned", standing.coins, pot])
+                            .font(.game(14, .bold))
+                            .foregroundStyle(palette.accent)
+                    }
+
+                    ForEach(Array(standing.rungs.enumerated()), id: \.element.id) { index, rung in
+                        RungRow(
+                            family: family,
+                            rung: rung,
+                            // The rung below is where this one's bar starts, so
+                            // a step reads as the stretch of play it actually
+                            // is rather than as everything since the beginning.
+                            floor: index > 0 ? standing.rungs[index - 1].goal : 0,
+                            value: standing.value,
+                            state: index < standing.done ? .earned
+                                : index == standing.done ? .current : .locked
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 32)
+            }
+        }
+        .pondContentWidth()
+        .background(palette.background.ignoresSafeArea())
+    }
+}
+
+private enum RungState { case earned, current, locked }
+
+/// One rung: its goal, its payout, and - only on the one you are actually on -
+/// a bar.
+///
+/// A locked rung draws no bar on purpose. Eleven empty tracks stacked up read as
+/// eleven things you have failed at; a plain list of numbers with prices reads
+/// as a route, which is what it is.
+private struct RungRow: View {
+    let family: Achievements.Family
+    let rung: Achievements.Rung
+    let floor: Int
+    let value: Int
+    let state: RungState
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+
+    var body: some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(done ? palette.accent.opacity(0.22) : palette.background)
-                if done {
+                Circle().fill(fill)
+                switch state {
+                case .earned:
                     Image(systemName: "checkmark")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(palette.accent)
-                } else {
-                    Text("\(badge.goal)")
-                        .font(.game(11, .bold))
-                        .foregroundStyle(palette.textSecondary)
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                        .padding(.horizontal, 3)
+                case .current:
+                    Image(systemName: family.symbol)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(palette.accent)
+                case .locked:
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(palette.textSecondary.opacity(0.6))
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(strings[badge.nameKey])
-                    .font(.game(14, .bold))
-                    .foregroundStyle(done ? palette.textPrimary : palette.textSecondary)
-                Text(strings[badge.descKey, badge.goal])
-                    .font(.game(12))
-                    .foregroundStyle(palette.textSecondary)
+                Text(family.goalText(strings, rung.goal))
+                    .font(.game(14, state == .locked ? .regular : .bold))
+                    .foregroundStyle(state == .locked ? palette.textSecondary : palette.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
-                ProgressBar(fraction: badge.fraction(snapshot), done: done)
-                Text(
-                    done
-                        ? strings["ach_earned"]
-                        : strings["ach_desc_progress", badge.progress(snapshot), badge.goal]
-                )
-                .font(.game(11))
-                .foregroundStyle(done ? palette.accent : palette.textSecondary.opacity(0.85))
+                if state == .current {
+                    ProgressBar(fraction: fraction, done: false)
+                    Text(strings["ach_desc_progress", value, rung.goal])
+                        .font(.game(11))
+                        .foregroundStyle(palette.textSecondary.opacity(0.85))
+                } else if state == .earned {
+                    Text(strings["ach_earned"])
+                        .font(.game(11))
+                        .foregroundStyle(palette.accent)
+                }
             }
 
             Spacer(minLength: 6)
 
             HStack(spacing: 4) {
                 CoinIcon(size: 13)
-                Text(strings["ach_reward", badge.coins])
+                Text(strings["ach_reward", rung.coins])
                     .font(.game(14, .bold))
-                    .foregroundStyle(done ? palette.accent : palette.textSecondary)
+                    .foregroundStyle(state == .locked ? palette.textSecondary : palette.accent)
             }
             .fixedSize()
         }
@@ -169,8 +283,22 @@ private struct BadgeRow: View {
         .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(done ? palette.accent.opacity(0.7) : .clear, lineWidth: 1.5)
+                .stroke(state == .current ? palette.accent.opacity(0.7) : .clear, lineWidth: 1.5)
         )
+        .opacity(state == .locked ? 0.72 : 1)
+    }
+
+    private var fill: Color {
+        switch state {
+        case .earned, .current: return palette.accent.opacity(0.22)
+        case .locked: return palette.background
+        }
+    }
+
+    private var fraction: Double {
+        let span = rung.goal - floor
+        guard span > 0 else { return 1 }
+        return min(max(Double(value - floor) / Double(span), 0), 1)
     }
 }
 

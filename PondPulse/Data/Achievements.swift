@@ -2,17 +2,32 @@
 //  Achievements.swift
 //  PondPulse
 //
-//  The badge shelf: twenty-four milestones, six families of four. A 1:1 port of
-//  the Android data/Achievements.kt.
+//  The badge shelf: nine ladders, seventy-one rungs. A rung is a number and a
+//  payout - clear 150 ponds, earn 800 stars - and a family is that ladder in
+//  order, so there is exactly one thing to be working on at a time.
+//
+//  ### Why ladders rather than badges
+//
+//  It used to be six families of four, which meant four payouts spread over 450
+//  ponds: the second rung of the campaign ladder wanted sixty ponds and the
+//  third wanted two hundred, and between them lay a hundred and forty ponds
+//  that paid nothing but their own five coins. The shelf was a list of things
+//  that were a long way off.
+//
+//  The rungs are close together now and they get bigger as they go. The same
+//  coins arrive, more of them arrive early, and the screen has one live bar per
+//  family that moves every few ponds instead of four bars that move twice a
+//  month.
 //
 //  ### They are derived, exactly like every other coin
 //
-//  Nothing here is claimed, banked or stored. Every badge is a question asked of
+//  Nothing here is claimed, banked or stored. Every rung is a question asked of
 //  a `Snapshot` of progress, and every one of those numbers can only ever go up:
 //  ponds cleared, stars earned, golden ponds finished, dailies, the best streak,
-//  the best Splash Rush score, how many friends and decorations are owned. A
-//  badge is earned when its number reaches its goal, and its coins fold into
-//  `CoinBank.derived` - recomputed from scratch on every read, like the rest.
+//  the best Splash Rush score, the four mini-game bests, how many friends and
+//  decorations are owned. A rung is earned when its number reaches its goal, and
+//  its coins fold into `CoinBank.derived` - recomputed from scratch on every
+//  read, like the rest.
 //
 //  That is the whole reason there is no "Claim" button. A claim needs a claimed
 //  set to write to, and a second stored ledger is exactly the thing the coin
@@ -21,20 +36,36 @@
 //
 //  ### Why friends and decorations count
 //
-//  Two of the badges read what the player *owns*, and owning things costs coins,
-//  so a purchase can push a badge over its line and pay a little back. That is a
-//  rebate, not a loop: the badge pays once, forever, and always less than the
-//  item cost. It is here because a collection game whose badges ignore the
-//  collection is a badge shelf about something else.
+//  Two of the ladders read what the player *owns*, and owning things costs
+//  coins, so a purchase can push a rung over its line and pay a little back.
+//  That is a rebate, not a loop: a rung pays once, forever, and always less than
+//  the item that crossed it cost. It is here because a collection game whose
+//  badges ignore the collection is a badge shelf about something else. They are
+//  also the two shortest and cheapest ladders on the shelf, for the same reason.
 //
 
 import Foundation
 
 enum Achievements {
 
-    /// The six things a player can be getting better at.
-    enum Family: String, CaseIterable {
-        case ponds, stars, golden, daily, rush, games, pond
+    /// One step of a ladder: what it wants, and what it pays.
+    struct Rung: Identifiable, Hashable {
+        let goal: Int
+        let coins: Int
+        var id: Int { goal }
+    }
+
+    /// The nine things a player can be getting better at.
+    ///
+    /// One number each, deliberately. The old Daily family measured clears on
+    /// two of its rungs and the streak on the other two, which is fine as four
+    /// separate badges and nonsense as a ladder - a bar cannot fill towards two
+    /// different numbers - so turning up and turning up *every day* are two
+    /// families now.
+    enum Family: String, CaseIterable, Identifiable, Hashable {
+        case ponds, stars, golden, daily, streak, rush, games, friends, decor
+
+        var id: String { rawValue }
 
         var titleKey: String {
             switch self {
@@ -42,9 +73,42 @@ enum Achievements {
             case .stars: return "ach_family_stars"
             case .golden: return "ach_family_golden"
             case .daily: return "ach_family_daily"
+            case .streak: return "ach_family_streak"
             case .rush: return "ach_family_rush"
             case .games: return "ach_family_games"
-            case .pond: return "ach_family_pond"
+            case .friends: return "ach_family_friends"
+            case .decor: return "ach_family_decor"
+            }
+        }
+
+        /// What one rung reads as - `goalKey` filled in with its goal, except on
+        /// the two ladders that start at one, where a count-of-one sentence
+        /// would say "Clear 1 golden ponds" on the first row every new player
+        /// ever sees. Their first rung has a sentence of its own instead, which
+        /// is both correct and better than a plural rule would be: "your first
+        /// golden pond" is what that rung is actually about.
+        func goalText(_ strings: Strings, _ goal: Int) -> String {
+            if goal == 1, self == .golden || self == .daily {
+                return strings[self == .golden ? "ach_desc_golden_one" : "ach_desc_daily_one"]
+            }
+            return strings[goalKey, goal]
+        }
+
+        /// A format string taking one rung's goal - "Clear %1$d ponds". The
+        /// rungs have no names of their own: at four a family they were worth
+        /// writing, and at eleven a name on every step would bury the number
+        /// that is the actual point of the row.
+        var goalKey: String {
+            switch self {
+            case .ponds: return "ach_desc_ponds"
+            case .stars: return "ach_desc_stars"
+            case .golden: return "ach_desc_golden"
+            case .daily: return "ach_desc_daily"
+            case .streak: return "ach_desc_streak"
+            case .rush: return "ach_desc_rush"
+            case .games: return "ach_desc_games_score"
+            case .friends: return "ach_desc_friends"
+            case .decor: return "ach_desc_decor"
             }
         }
 
@@ -57,19 +121,83 @@ enum Achievements {
             case .ponds: return "drop.fill"
             case .stars: return "star.fill"
             case .golden: return "crown.fill"
-            case .daily: return "flame.fill"
+            case .daily: return "sun.max.fill"
+            case .streak: return "flame.fill"
             case .rush: return "bolt.fill"
             case .games: return "gamecontroller.fill"
-            case .pond: return "pawprint.fill"
+            case .friends: return "pawprint.fill"
+            case .decor: return "leaf.fill"
+            }
+        }
+
+        /// The number this family watches.
+        func progress(_ of: Snapshot) -> Int {
+            switch self {
+            case .ponds: return of.pondsCleared
+            case .stars: return of.stars
+            case .golden: return of.goldenCleared
+            case .daily: return of.dailyClears
+            case .streak: return of.bestStreak
+            case .rush: return of.bestRush
+            case .games: return of.gamesTotal
+            case .friends: return of.friendsOwned
+            case .decor: return of.decorOwned
+            }
+        }
+
+        /// The ladder itself.
+        ///
+        /// Goals climb faster than the payouts do, which is what stops the last
+        /// rung of the campaign from being worth more than the shop: 450 ponds
+        /// is forty-five times ten ponds and pays seven times as much.
+        ///
+        /// The nine ladders together are worth 14,890, and everything progress
+        /// can ever pay - every pond three-starred, every golden pond, the
+        /// streak and Splash Rush - comes to 44,790 against a shop of 244,700.
+        /// Eighteen per cent, and that is the point: the rest of the shop is
+        /// bought with `Quests`, a few hundred coins a day, by turning up.
+        /// The top of each ladder is deliberately reachable - 1350 stars is
+        /// every pond three-starred, 84 days is `CoinBank.streakWeekCap`, 30 is
+        /// every golden pond and every decoration - so no ladder ends on a rung
+        /// that exists only to be unfinished.
+        var rungs: [Rung] {
+            switch self {
+            case .ponds:
+                return zip([ 10,  25,  50, 100, 150, 200, 250, 300, 350, 400, 450],
+                           [100, 120, 150, 180, 220, 260, 320, 380, 450, 550, 700]).map(Rung.init)
+            case .stars:
+                return zip([30, 60, 100, 150, 200, 275, 350, 450, 600, 800, 1000, 1350],
+                           [80, 100, 120, 140, 170, 200, 240, 290, 350, 420, 500, 620]).map(Rung.init)
+            case .golden:
+                return zip([  1,   3,   6,  10,  14,  18,  22,  26,  30],
+                           [100, 120, 150, 180, 220, 270, 330, 400, 500]).map(Rung.init)
+            case .daily:
+                return zip([ 1,   5,  15,  30,  60, 100, 150],
+                           [80, 100, 130, 170, 220, 290, 380]).map(Rung.init)
+            case .streak:
+                return zip([ 3,   7,  14,  30,  60,  84],
+                           [80, 110, 150, 200, 270, 360]).map(Rung.init)
+            case .rush:
+                return zip([25, 75, 150, 250, 350, 500],
+                           [60, 80, 110, 150, 200, 270]).map(Rung.init)
+            case .games:
+                return zip([20, 45,  80, 130, 190, 260],
+                           [60, 80, 110, 150, 200, 270]).map(Rung.init)
+            case .friends:
+                return zip([ 3,  6, 10,  15,  22,  30,  45],
+                           [50, 70, 90, 120, 160, 210, 280]).map(Rung.init)
+            case .decor:
+                return zip([ 3,  6, 10,  15,  22,  30],
+                           [50, 70, 90, 120, 160, 210]).map(Rung.init)
             }
         }
     }
 
-    /// Everything the badges are allowed to look at.
+    /// Everything the ladders are allowed to look at.
     ///
     /// Deliberately a flat handful of counters rather than the star map and the
-    /// owned set: a badge that could ask an arbitrary question of the whole save
-    /// is a badge nobody can reason about.
+    /// owned set: a rung that could ask an arbitrary question of the whole save
+    /// is a rung nobody can reason about.
     struct Snapshot: Equatable {
         var pondsCleared = 0
         var stars = 0
@@ -77,127 +205,87 @@ enum Achievements {
         var dailyClears = 0
         var bestStreak = 0
         var bestRush = 0
-        /// How many of the pond's four games have ever been scored in.
-        var gamesPlayed = 0
-        /// The four games' best scores added together.
+        /// The four mini-game bests added together. One number rather than four
+        /// because the games score in four different currencies - buds popped,
+        /// ducklings home, rounds survived, hits - and a ladder on any one of
+        /// them would be a ladder about whichever game hands out the biggest
+        /// numbers.
         var gamesTotal = 0
         var friendsOwned = 0
         var decorOwned = 0
     }
 
-    /// One badge.
-    ///
-    /// `descKey` is a format string taking `goal`, so the six families need
-    /// eight sentences between them rather than twenty-four - the flavour is in
-    /// `nameKey`, which is the part worth writing out.
-    struct Badge: Identifiable {
-        let id: String
+    /// Where one family stands right now: everything both screens need, worked
+    /// out once so the row and the ladder cannot disagree about it.
+    struct Standing {
         let family: Family
-        let nameKey: String
-        let descKey: String
-        let goal: Int
+        /// The number the family watches, as it stands.
+        let value: Int
+        let rungs: [Rung]
+        /// How many rungs are behind you.
+        let done: Int
+        /// The one being worked on, or nil once the ladder is finished.
+        let next: Rung?
+        /// What this family has paid so far.
         let coins: Int
-        let progressOf: @Sendable (Snapshot) -> Int
 
-        func progress(_ of: Snapshot) -> Int { min(max(progressOf(of), 0), goal) }
-        func isEarned(_ of: Snapshot) -> Bool { progressOf(of) >= goal }
-        /// How far along, 0...1, for the bar.
-        func fraction(_ of: Snapshot) -> Double {
-            goal <= 0 ? 1 : Double(progress(of)) / Double(goal)
+        var total: Int { rungs.count }
+        var isComplete: Bool { next == nil }
+
+        /// How far up the *current* rung, 0...1 - measured from the rung below
+        /// it, not from zero.
+        ///
+        /// From zero, a bar on the campaign ladder would sit at 96% for the last
+        /// fifty ponds and never visibly move again. From the rung below, every
+        /// pond cleared is worth a fiftieth of the bar, which is the whole point
+        /// of there being one bar per family instead of eleven.
+        var fraction: Double {
+            guard let next else { return 1 }
+            let floor = done > 0 ? rungs[done - 1].goal : 0
+            let span = next.goal - floor
+            guard span > 0 else { return 1 }
+            return min(max(Double(value - floor) / Double(span), 0), 1)
         }
     }
 
-    /// What each tier of a family pays.
-    ///
-    /// Rising, but not steeply: the fourth badge in a family is the work of the
-    /// whole game, and it should feel like a milestone rather than like the only
-    /// one that counted.
-    private static let tiers = [15, 30, 60, 120]
-
-    private static func badge(
-        _ id: String, _ family: Family, _ nameKey: String, _ descKey: String,
-        _ goal: Int, _ tier: Int, _ progressOf: @escaping @Sendable (Snapshot) -> Int
-    ) -> Badge {
-        Badge(id: id, family: family, nameKey: nameKey, descKey: descKey,
-              goal: goal, coins: tiers[tier], progressOf: progressOf)
+    static func standing(_ family: Family, _ of: Snapshot) -> Standing {
+        let rungs = family.rungs
+        let value = family.progress(of)
+        let done = rungs.prefix { value >= $0.goal }.count
+        return Standing(
+            family: family,
+            value: value,
+            rungs: rungs,
+            done: done,
+            next: done < rungs.count ? rungs[done] : nil,
+            coins: rungs.prefix(done).reduce(0) { $0 + $1.coins }
+        )
     }
 
-    static let all: [Badge] = [
-        // --- ponds cleared -------------------------------------------------
-        badge("ponds_1", .ponds, "ach_ponds_1", "ach_desc_ponds", 10, 0) { $0.pondsCleared },
-        badge("ponds_2", .ponds, "ach_ponds_2", "ach_desc_ponds", 60, 1) { $0.pondsCleared },
-        badge("ponds_3", .ponds, "ach_ponds_3", "ach_desc_ponds", 200, 2) { $0.pondsCleared },
-        badge("ponds_4", .ponds, "ach_ponds_4", "ach_desc_ponds", 450, 3) { $0.pondsCleared },
-
-        // --- stars ---------------------------------------------------------
-        badge("stars_1", .stars, "ach_stars_1", "ach_desc_stars", 60, 0) { $0.stars },
-        badge("stars_2", .stars, "ach_stars_2", "ach_desc_stars", 300, 1) { $0.stars },
-        badge("stars_3", .stars, "ach_stars_3", "ach_desc_stars", 800, 2) { $0.stars },
-        badge("stars_4", .stars, "ach_stars_4", "ach_desc_stars", 1350, 3) { $0.stars },
-
-        // --- golden ponds --------------------------------------------------
-        badge("gold_1", .golden, "ach_gold_1", "ach_desc_golden", 1, 0) { $0.goldenCleared },
-        badge("gold_2", .golden, "ach_gold_2", "ach_desc_golden", 8, 1) { $0.goldenCleared },
-        badge("gold_3", .golden, "ach_gold_3", "ach_desc_golden", 18, 2) { $0.goldenCleared },
-        badge("gold_4", .golden, "ach_gold_4", "ach_desc_golden", 30, 3) { $0.goldenCleared },
-
-        // --- the daily pond ------------------------------------------------
-        // Two counters, not one: turning up is its own achievement and so is
-        // turning up every day, and a family that only measured the streak
-        // would pay nothing at all to somebody who plays most days.
-        badge("daily_1", .daily, "ach_daily_1", "ach_desc_daily", 1, 0) { $0.dailyClears },
-        badge("daily_2", .daily, "ach_daily_2", "ach_desc_daily", 10, 1) { $0.dailyClears },
-        badge("daily_3", .daily, "ach_daily_3", "ach_desc_streak", 7, 2) { $0.bestStreak },
-        badge("daily_4", .daily, "ach_daily_4", "ach_desc_streak", 30, 3) { $0.bestStreak },
-
-        // --- splash rush ---------------------------------------------------
-        badge("rush_1", .rush, "ach_rush_1", "ach_desc_rush", 25, 0) { $0.bestRush },
-        badge("rush_2", .rush, "ach_rush_2", "ach_desc_rush", 75, 1) { $0.bestRush },
-        badge("rush_3", .rush, "ach_rush_3", "ach_desc_rush", 175, 2) { $0.bestRush },
-        badge("rush_4", .rush, "ach_rush_4", "ach_desc_rush", 350, 3) { $0.bestRush },
-
-        // --- the pond's four games ------------------------------------------
-        // Breadth first, then depth. The four games score in four different
-        // currencies - buds popped, ducklings home, rounds survived, hits - so a
-        // badge on any single one of them would be a badge about whichever game
-        // happened to hand out the biggest numbers. Playing all four is one
-        // milestone and the four bests added up is the other, which is the only
-        // fair way to ask "how good are you at the pond's games" when the games
-        // do not agree on what a point is.
-        badge("games_1", .games, "ach_games_1", "ach_desc_games_played", 1, 0) { $0.gamesPlayed },
-        badge("games_2", .games, "ach_games_2", "ach_desc_games_played", 4, 1) { $0.gamesPlayed },
-        // 90 is roughly the score that maxes every game's coin payout, and 200
-        // is well past it in all four: Ripple Chain's quota is 1 + 2r a round,
-        // so its own best alone is a square number and a strong run there is
-        // half the target on its own - which is exactly why the other three
-        // have to be in it too.
-        badge("games_3", .games, "ach_games_3", "ach_desc_games_score", 90, 2) { $0.gamesTotal },
-        badge("games_4", .games, "ach_games_4", "ach_desc_games_score", 200, 3) { $0.gamesTotal },
-
-        // --- the pond you keep ---------------------------------------------
-        badge("pond_1", .pond, "ach_pond_1", "ach_desc_friends", 10, 0) { $0.friendsOwned },
-        badge("pond_2", .pond, "ach_pond_2", "ach_desc_friends", 25, 1) { $0.friendsOwned },
-        badge("pond_3", .pond, "ach_pond_3", "ach_desc_friends", 45, 2) { $0.friendsOwned },
-        badge("pond_4", .pond, "ach_pond_4", "ach_desc_decor", 15, 3) { $0.decorOwned },
-    ]
-
-    /// Badges grouped the way the screen draws them, families in order.
-    static let byFamily: [(Family, [Badge])] =
-        Family.allCases.map { family in (family, all.filter { $0.family == family }) }
+    /// Every rung on the shelf, for the "n of m" line.
+    static let totalRungs: Int = Family.allCases.reduce(0) { $0 + $1.rungs.count }
 
     /// Everything the shelf can ever pay.
-    static let totalCoins: Int = all.reduce(0) { $0 + $1.coins }
-
-    static func earnedCount(_ of: Snapshot) -> Int { all.filter { $0.isEarned(of) }.count }
-
-    /// What the badges are worth right now - folded into `CoinBank.derived`.
-    static func coins(_ of: Snapshot) -> Int {
-        all.filter { $0.isEarned(of) }.reduce(0) { $0 + $1.coins }
+    static let totalCoins: Int = Family.allCases.reduce(0) { total, family in
+        total + family.rungs.reduce(0) { $0 + $1.coins }
     }
 
-    /// The badge closest to being finished among those still open, or nil once
-    /// they are all earned. The Home tile uses it to say what is next.
-    static func nextUp(_ of: Snapshot) -> Badge? {
-        all.filter { !$0.isEarned(of) }.max { $0.fraction(of) < $1.fraction(of) }
+    static func earnedCount(_ of: Snapshot) -> Int {
+        Family.allCases.reduce(0) { $0 + standing($1, of).done }
+    }
+
+    /// What the ladders are worth right now - folded into `CoinBank.derived`.
+    static func coins(_ of: Snapshot) -> Int {
+        Family.allCases.reduce(0) { $0 + standing($1, of).coins }
+    }
+
+    /// The family closest to its next rung, or nil once every ladder is
+    /// finished. The Home tile and the shelf's own header use it to say what is
+    /// next, so the screen opens on something to aim at.
+    static func nextUp(_ of: Snapshot) -> Standing? {
+        Family.allCases
+            .map { standing($0, of) }
+            .filter { !$0.isComplete }
+            .max { $0.fraction < $1.fraction }
     }
 }

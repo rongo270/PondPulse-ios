@@ -29,32 +29,38 @@ enum CoinBank {
     // MARK: - Earning
 
     /// Clearing a campaign pond, at any star count. Paid once, by derivation.
-    static let clear = 5
+    static let clear = 30
 
     /// On top of `clear` when the pond is finished at three stars.
-    static let threeStarBonus = 5
+    static let threeStarBonus = 20
 
-    /// A golden pond. Worth four ordinary clears - they are optional and rare.
-    static let goldenPond = 20
+    /// A golden pond. Worth three ordinary clears - they are optional and rare.
+    static let goldenPond = 150
 
     /// Each Daily Pond ever cleared.
-    static let dailyClear = 12
+    ///
+    /// Half what the ×10 rescale would have made it, because the daily is now
+    /// also a `Quests` board every day: clearing it usually pays a quest as
+    /// well, and paying twice at full rate for one pond would have made the
+    /// daily worth more than the pack it came out of.
+    static let dailyClear = 60
 
     /// Each full week of the *best* daily streak.
-    static let streakWeek = 30
+    static let streakWeek = 250
 
     /// Weeks of streak that pay. Uncapped, a hundred-day streak would out-earn
     /// the whole campaign, and the streak already has cosmetics of its own.
-    static let streakWeekCap = 12
+    static let streakWeekCap = 8
 
-    /// Splash Rush points per coin, read off the best score for a duration.
-    static let rushPointsPerCoin = 15
+    /// Splash Rush points that earn ten coins, read off the best score for a
+    /// duration. 750 points is still what it takes to cap one.
+    static let rushPointsPerTen = 15
 
     /// Most one Splash Rush duration's best can ever be worth.
-    static let rushCap = 50
+    static let rushCap = 500
 
     /// What each coin pack grants. These are the real-money products.
-    static let coinPacks = [100, 250, 500]
+    static let coinPacks = [1000, 2500, 5000]
 
     /// All the pond's mini games together can pay this much in one week.
     ///
@@ -62,12 +68,12 @@ enum CoinBank {
     /// can replay forever, so without a ceiling the cheapest of them would set
     /// the price of everything in the shop. With one, a keen player empties the
     /// week in an afternoon and the pond goes back to being a pond.
-    static let pondWeeklyCap = PondCatalog.boosted(100)
+    static let pondWeeklyCap = PondCatalog.boosted(1000)
 
     // MARK: - Spending
 
     /// One hint. The 50-hint pack in the shop stays a real-money product.
-    static let priceHint = 15
+    static let priceHint = 150
 
     /// Hints sold in one coin purchase. Five rather than one: a shop row you
     /// have to tap seven times is a chore, and the pack above it already exists
@@ -78,25 +84,25 @@ enum CoinBank {
     /// price each. With thirty-odd items on the shelves a single price would make
     /// the whole catalogue one undifferentiated wall - and put the first purchase
     /// as far away as the last.
-    static let priceSkin = 150
-    static let priceSkinUncommon = 260
-    static let priceSkinRare = 400
-    static let pricePad = 130
-    static let pricePadRare = 220
-    static let priceTheme = 350
-    static let priceThemeRare = 550
+    static let priceSkin = 1500
+    static let priceSkinUncommon = 2600
+    static let priceSkinRare = 4000
+    static let pricePad = 1300
+    static let pricePadRare = 2200
+    static let priceTheme = 3500
+    static let priceThemeRare = 5500
 
     /// The top band on each shelf: the handful of things worth saving for.
     ///
-    /// Deliberately well clear of the band below - 650 against 400, 400 against
-    /// 220 - because a top band a fifth dearer than the one under it is not a
-    /// goal, it is a rounding error.
-    static let priceSkinLegendary = 650
-    static let pricePadLegendary = 400
+    /// Deliberately well clear of the band below - 6500 against 4000, 4000
+    /// against 2200 - because a top band a fifth dearer than the one under it is
+    /// not a goal, it is a rounding error.
+    static let priceSkinLegendary = 6500
+    static let pricePadLegendary = 4000
 
     /// Each seat past the three the pond starts with, in order. Rising prices,
     /// so the last seat is a long-term goal rather than a rounding error.
-    static let slotPrices = [120, 220, 350, 500, 700]
+    static let slotPrices = [1200, 2200, 3500, 5000, 7000]
 
     /// Seats the pond holds before any are bought.
     static let baseSlots = 3
@@ -122,7 +128,7 @@ enum CoinBank {
     }
 
     static func rushCoins(best: Int) -> Int {
-        min(max(best, 0) / rushPointsPerCoin, rushCap)
+        min(max(best, 0) * 10 / rushPointsPerTen, rushCap)
     }
 
     /// Everything progress alone is worth, recomputed from scratch.

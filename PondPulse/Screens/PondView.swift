@@ -202,6 +202,16 @@ struct PondView: View {
     @State private var panel: PondPanelKind = .none
     @State private var motion = PondMotion()
 
+    /// Whether the pond is being looked at rather than used.
+    ///
+    /// The header and the four buttons are the only things on this screen that
+    /// are not pond, and the screen is a pond you are meant to sit and watch.
+    /// The toggle is a real button in both states - and the same button in the
+    /// same corner in both - rather than a tap on the water: the water already
+    /// answers a tap with a ripple, and a gesture that sometimes ripples and
+    /// sometimes swallows the whole interface is a gesture nobody trusts.
+    @State private var bare = false
+
     /// Where the safe area sits in the window - measured, not asked for.
     ///
     /// The canvas draws to the glass on purpose, and a `GeometryReader` inside
@@ -239,6 +249,7 @@ struct PondView: View {
             // steps back from the notch and the strip behind it is bare bank, so
             // a scrim that started at the safe area drew a hard line across the
             // grass exactly where the pond was trying not to have one.
+            if !bare {
             VStack {
                 // Full strength as far down as the status bar, then the same
                 // 96-point fade the header has always sat in: stretching the
@@ -263,17 +274,40 @@ struct PondView: View {
             }
             .allowsHitTesting(false)
             .ignoresSafeArea()
+            .transition(.opacity)
+            }
 
             VStack(spacing: 0) {
-                HStack {
-                    RoundIconButton(systemName: "chevron.backward") { vm.back() }
-                    Text(strings["pond_title"])
-                        .font(.game(22, .bold))
-                        .foregroundStyle(palette.textPrimary)
-                    Spacer()
-                    CoinChip(coins: vm.coins) { vm.navigate(.shop) }
+                HStack(spacing: 8) {
+                    if bare {
+                        Spacer()
+                    } else {
+                        RoundIconButton(systemName: "chevron.backward") { vm.back() }
+                        Text(strings["pond_title"])
+                            .font(.game(22, .bold))
+                            .foregroundStyle(palette.textPrimary)
+                        Spacer()
+                    }
+                    // Always here, always the same size, in the same corner: the
+                    // way back out of a screen with nothing else on it has to be
+                    // the thing you already know where to find.
+                    RoundIconButton(
+                        systemName: bare
+                            ? "arrow.down.right.and.arrow.up.left"
+                            : "arrow.up.left.and.arrow.down.right",
+                        action: {
+                            panel = .none
+                            bare.toggle()
+                            Haptics.tick(enabled: vm.haptics)
+                        },
+                        accessibilityLabel: strings[bare ? "pond_show_ui" : "pond_hide_ui"]
+                    )
+                    if !bare {
+                        CoinChip(coins: vm.coins) { vm.navigate(.shop) }
+                    }
                 }
                 Spacer()
+                if !bare {
                 HStack(spacing: 8) {
                     PondAction(icon: "pawprint.fill", label: strings["pond_friends"]) {
                         panel = .friends
@@ -287,6 +321,8 @@ struct PondView: View {
                     PondAction(icon: "rectangle.grid.2x2.fill", label: strings["pond_roster"]) {
                         panel = .roster
                     }
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
             .padding(.horizontal, 12)
@@ -302,6 +338,7 @@ struct PondView: View {
             }
         }
         .animation(.easeInOut(duration: 0.22), value: panel)
+        .animation(.easeInOut(duration: 0.28), value: bare)
     }
 
     private func pondCanvas(cast: [String], decorOwned: [PondCatalog.Decor]) -> some View {

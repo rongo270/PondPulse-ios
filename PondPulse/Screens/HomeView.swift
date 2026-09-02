@@ -267,7 +267,7 @@ struct HomeView: View {
                         subLabel: strings[
                             "home_stars_short",
                             Achievements.earnedCount(vm.achievements),
-                            Achievements.all.count
+                            Achievements.totalRungs
                         ]
                     ) { vm.navigate(.achievements) }
                     MenuTile(systemName: "bag.fill", label: strings["home_shop"]) { vm.navigate(.shop) }

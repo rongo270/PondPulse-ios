@@ -52,13 +52,23 @@ enum Screen: Equatable {
     /// covers the half of the pond you are trying to place something on.
     case decorate
 
-    /// The badge shelf: twenty-four milestones, and what each one pays.
+    /// The badge shelf: nine ladders, and where you are on each of them.
     ///
-    /// Its own screen rather than a panel in My Pond because six of its rows
+    /// Its own screen rather than a panel in My Pond because most of its rows
     /// are about the campaign, the daily and Splash Rush - none of which happen
     /// in the pond - and because a shelf you can only reach through a pond you
     /// have not opened yet is a shelf a new player never sees.
     case achievements
+
+    /// One ladder, rung by rung: what is behind you, what you are on, and every
+    /// step still to come.
+    ///
+    /// A second screen rather than an expanding row, because the whole reason
+    /// the shelf is nine rows now is that nine rows fit on a phone - and a row
+    /// that unfolds into eleven puts the shelf straight back where it was.
+    /// Carries the family's raw value so `Screen` stays `Equatable` without
+    /// `Achievements` having to be.
+    case achievementFamily(String)
 }
 
 @MainActor
@@ -130,6 +140,9 @@ final class AppViewModel: ObservableObject {
     @Published var backStack: [Screen] = [.home]
 
     init() {
+        // Before a single coin is read: a save from before the ×10 rescale
+        // holds totals a tenth of the size the prices now expect.
+        store.migrateEconomy()
         haptics = store.haptics
         stars = store.stars
         rushBests = store.rushBests
@@ -211,7 +224,13 @@ final class AppViewModel: ObservableObject {
             case "decorate": backStack = [.home, .pond, .decorate]
             case "settings": backStack = [.home, .settings]
             case "achievements": backStack = [.home, .achievements]
-            default: break
+            default:
+                // "achievements:stars" opens one ladder, the same way
+                // PP_START_PACK opens one pack.
+                if screen.hasPrefix("achievements:"),
+                   let family = Achievements.Family(rawValue: String(screen.dropFirst(13))) {
+                    backStack = [.home, .achievements, .achievementFamily(family.rawValue)]
+                }
             }
         }
         #endif
@@ -490,10 +509,6 @@ final class AppViewModel: ObservableObject {
             dailyClears: dailyTotal,
             bestStreak: dailyBestStreak,
             bestRush: rushBests.values.max() ?? 0,
-            // A best of zero is a game nobody has scored in, which is the only
-            // "have you played this" the pond stores - and the right one: a run
-            // that ended on nothing is a game opened, not a game played.
-            gamesPlayed: miniBests.values.count { $0 > 0 },
             gamesTotal: miniBests.values.reduce(0, +),
             friendsOwned: ownedSkinIds().count,
             decorOwned: PondCatalog.decor.count { isDecorOwned($0) }
@@ -764,6 +779,36 @@ final class AppViewModel: ObservableObject {
     func setUnlockAll(_ value: Bool) {
         store.setUnlockAll(value)
         unlockAllFlag = store.unlockAll
+    }
+
+    /// Testing only: 500 coins, banked for real.
+    ///
+    /// Granted rather than shown, which is the whole difference between these
+    /// three buttons and the switch above them. "Unlock everything" hands the
+    /// goods over *and* stops anything being charged, so every price on every
+    /// shelf becomes decoration - which is exactly no use when the thing you
+    /// wanted to look at was the prices. These spend and debit like anybody
+    /// else's coins.
+    func testGrantCoins(_ amount: Int = 500) {
+        store.grantCoins(amount)
+        coinsGranted = store.coinsGranted
+    }
+
+    /// Testing only: every friend on the shelf, and nothing else.
+    ///
+    /// Friends alone because they are what the pond is made of - three of them
+    /// is the gate on My Pond and the roster is the screen worth looking at
+    /// full. Pads, themes, decorations and seats keep their prices and stay
+    /// locked, so the shop still reads honestly next door.
+    func testGrantFriends() {
+        store.grantProducts(Catalog.skins.map { Catalog.skinProductId($0.id) })
+        owned = store.owned
+    }
+
+    /// Testing only: two more seats in the pond, free.
+    func testGrantPondSlots(_ count: Int = 2) {
+        store.grantPondSlots(count)
+        pondSlots = store.pondSlots
     }
 
     /// The pond `delta` steps along the play order from `levelId`, or nil at

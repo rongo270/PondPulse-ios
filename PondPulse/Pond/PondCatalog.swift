@@ -89,55 +89,55 @@ enum PondCatalog {
     /// on purpose: the first thing a player can afford is the first thing they
     /// see, and the willow at the far end is what the tray is for.
     static let decor: [Decor] = [
-        Decor("reeds", "decor_reeds", 60, .water, CGPoint(x: 0.13, y: 0.28), 0.22, bonusCount: 2),
-        Decor("toadstools", "decor_toadstools", 80, .shore, CGPoint(x: 0.52, y: 0.94), 0.13, bonusCount: 6),
-        Decor("buoy", "decor_buoy", 90, .water, CGPoint(x: 0.86, y: 0.68), 0.11, bonusCount: 11),
-        Decor("flowers", "decor_flowers", 100, .water, CGPoint(x: 0.55, y: 0.72), 0.16, bonusCount: 14),
-        Decor("birdhouse", "decor_birdhouse", 120, .shore, CGPoint(x: 0.84, y: 0.06), 0.14, bonusCount: 17),
-        Decor("lilies", "decor_lilies", 130, .water, CGPoint(x: 0.72, y: 0.30), 0.21, bonusCount: 21),
-        Decor("log", "decor_log", 150, .water, CGPoint(x: 0.26, y: 0.62), 0.28, bonusCount: 24),
-        Decor("bench", "decor_bench", 160, .shore, CGPoint(x: 0.22, y: 0.93), 0.21, bonusCount: 27),
-        Decor("rock", "decor_rock", 170, .water, CGPoint(x: 0.87, y: 0.46), 0.17, bonusCount: 30),
-        Decor("stones", "decor_stones", 190, .water, CGPoint(x: 0.62, y: 0.55), 0.26),
-        Decor("fence", "decor_fence", 200, .shore, CGPoint(x: 0.17, y: 0.055), 0.27),
-        Decor("lantern", "decor_lantern", 220, .water, CGPoint(x: 0.40, y: 0.40), 0.13),
-        Decor("dock", "decor_dock", 250, .shore, CGPoint(x: 0.33, y: 0.075), 0.30),
-        Decor("spring", "decor_spring", 280, .water, CGPoint(x: 0.50, y: 0.26), 0.18),
-        Decor("boat", "decor_boat", 320, .water, CGPoint(x: 0.30, y: 0.44), 0.27),
-        Decor("willow", "decor_willow", 380, .shore, CGPoint(x: 0.82, y: 0.90), 0.33),
+        Decor("reeds", "decor_reeds", 600, .water, CGPoint(x: 0.13, y: 0.28), 0.22, bonusCount: 2),
+        Decor("toadstools", "decor_toadstools", 800, .shore, CGPoint(x: 0.52, y: 0.94), 0.13, bonusCount: 6),
+        Decor("buoy", "decor_buoy", 900, .water, CGPoint(x: 0.86, y: 0.68), 0.11, bonusCount: 11),
+        Decor("flowers", "decor_flowers", 1000, .water, CGPoint(x: 0.55, y: 0.72), 0.16, bonusCount: 14),
+        Decor("birdhouse", "decor_birdhouse", 1200, .shore, CGPoint(x: 0.84, y: 0.06), 0.14, bonusCount: 17),
+        Decor("lilies", "decor_lilies", 1300, .water, CGPoint(x: 0.72, y: 0.30), 0.21, bonusCount: 21),
+        Decor("log", "decor_log", 1500, .water, CGPoint(x: 0.26, y: 0.62), 0.28, bonusCount: 24),
+        Decor("bench", "decor_bench", 1600, .shore, CGPoint(x: 0.22, y: 0.93), 0.21, bonusCount: 27),
+        Decor("rock", "decor_rock", 1700, .water, CGPoint(x: 0.87, y: 0.46), 0.17, bonusCount: 30),
+        Decor("stones", "decor_stones", 1900, .water, CGPoint(x: 0.62, y: 0.55), 0.26),
+        Decor("fence", "decor_fence", 2000, .shore, CGPoint(x: 0.17, y: 0.055), 0.27),
+        Decor("lantern", "decor_lantern", 2200, .water, CGPoint(x: 0.40, y: 0.40), 0.13),
+        Decor("dock", "decor_dock", 2500, .shore, CGPoint(x: 0.33, y: 0.075), 0.30),
+        Decor("spring", "decor_spring", 2800, .water, CGPoint(x: 0.50, y: 0.26), 0.18),
+        Decor("boat", "decor_boat", 3200, .water, CGPoint(x: 0.30, y: 0.44), 0.27),
+        Decor("willow", "decor_willow", 3800, .shore, CGPoint(x: 0.82, y: 0.90), 0.33),
 
         // The second shelf. Fourteen more, none of them on the golden-pond
         // ladder: all thirty rungs were already spoken for, and moving one
         // would revoke a prize somebody has already earned.
-        Decor("gnome", "decor_gnome", 70, .shore, CGPoint(x: 0.66, y: 0.055), 0.12),
-        Decor("cattails", "decor_cattails", 95, .water, CGPoint(x: 0.07, y: 0.62), 0.19),
-        Decor("mailbox", "decor_mailbox", 110, .shore, CGPoint(x: 0.06, y: 0.93), 0.14),
-        Decor("koi", "decor_koi", 140, .water, CGPoint(x: 0.45, y: 0.58), 0.24),
-        Decor("picnic", "decor_picnic", 175, .shore, CGPoint(x: 0.42, y: 0.055), 0.24),
-        Decor("swans", "decor_swans", 195, .water, CGPoint(x: 0.66, y: 0.42), 0.26),
-        Decor("hammock", "decor_hammock", 210, .shore, CGPoint(x: 0.60, y: 0.94), 0.29),
-        Decor("firepit", "decor_firepit", 235, .shore, CGPoint(x: 0.10, y: 0.055), 0.18),
-        Decor("fountain", "decor_fountain", 255, .water, CGPoint(x: 0.50, y: 0.36), 0.22),
-        Decor("swing", "decor_swing", 270, .shore, CGPoint(x: 0.90, y: 0.94), 0.26),
-        Decor("arch", "decor_arch", 295, .shore, CGPoint(x: 0.50, y: 0.055), 0.26),
-        Decor("canoe", "decor_canoe", 310, .water, CGPoint(x: 0.20, y: 0.34), 0.30),
-        Decor("waterwheel", "decor_waterwheel", 350, .water, CGPoint(x: 0.90, y: 0.60), 0.26),
-        Decor("pier", "decor_pier", 400, .shore, CGPoint(x: 0.14, y: 0.075), 0.34),
+        Decor("gnome", "decor_gnome", 700, .shore, CGPoint(x: 0.66, y: 0.055), 0.12),
+        Decor("cattails", "decor_cattails", 950, .water, CGPoint(x: 0.07, y: 0.62), 0.19),
+        Decor("mailbox", "decor_mailbox", 1100, .shore, CGPoint(x: 0.06, y: 0.93), 0.14),
+        Decor("koi", "decor_koi", 1400, .water, CGPoint(x: 0.45, y: 0.58), 0.24),
+        Decor("picnic", "decor_picnic", 1750, .shore, CGPoint(x: 0.42, y: 0.055), 0.24),
+        Decor("swans", "decor_swans", 1950, .water, CGPoint(x: 0.66, y: 0.42), 0.26),
+        Decor("hammock", "decor_hammock", 2100, .shore, CGPoint(x: 0.60, y: 0.94), 0.29),
+        Decor("firepit", "decor_firepit", 2350, .shore, CGPoint(x: 0.10, y: 0.055), 0.18),
+        Decor("fountain", "decor_fountain", 2550, .water, CGPoint(x: 0.50, y: 0.36), 0.22),
+        Decor("swing", "decor_swing", 2700, .shore, CGPoint(x: 0.90, y: 0.94), 0.26),
+        Decor("arch", "decor_arch", 2950, .shore, CGPoint(x: 0.50, y: 0.055), 0.26),
+        Decor("canoe", "decor_canoe", 3100, .water, CGPoint(x: 0.20, y: 0.34), 0.30),
+        Decor("waterwheel", "decor_waterwheel", 3500, .water, CGPoint(x: 0.90, y: 0.60), 0.26),
+        Decor("pier", "decor_pier", 4000, .shore, CGPoint(x: 0.14, y: 0.075), 0.34),
     ].sorted { $0.price < $1.price }
 
     /// Day is free and is what a new pond looks like; the rest are bought. The
     /// order is the order they appear in the pond's shop.
     static let weathers: [Weather] = [
         Weather("day", "weather_day", 0),
-        Weather("sunset", "weather_sunset", 150),
-        Weather("fog", "weather_fog", 160),
-        Weather("night", "weather_night", 180),
-        Weather("rain", "weather_rain", 200),
-        Weather("snow", "weather_snow", 220),
-        Weather("aurora", "weather_aurora", 240),
-        Weather("storm", "weather_storm", 260),
-        Weather("rainbow", "weather_rainbow", 280),
-        Weather("starry", "weather_starry", 300),
+        Weather("sunset", "weather_sunset", 1500),
+        Weather("fog", "weather_fog", 1600),
+        Weather("night", "weather_night", 1800),
+        Weather("rain", "weather_rain", 2000),
+        Weather("snow", "weather_snow", 2200),
+        Weather("aurora", "weather_aurora", 2400),
+        Weather("storm", "weather_storm", 2600),
+        Weather("rainbow", "weather_rainbow", 2800),
+        Weather("starry", "weather_starry", 3000),
     ]
 
     /// The surface of the water, and the bank around it.
@@ -163,20 +163,20 @@ enum PondCatalog {
 
     static let waters: [Surface] = [
         Surface("clear", "water_clear", 0),
-        Surface("reedy", "water_reedy", 120),
-        Surface("deep", "water_deep", 140),
-        Surface("sparkle", "water_sparkle", 150),
-        Surface("mirror", "water_mirror", 160),
-        Surface("emerald", "water_emerald", 170),
+        Surface("reedy", "water_reedy", 1200),
+        Surface("deep", "water_deep", 1400),
+        Surface("sparkle", "water_sparkle", 1500),
+        Surface("mirror", "water_mirror", 1600),
+        Surface("emerald", "water_emerald", 1700),
     ]
 
     static let shores: [Surface] = [
         Surface("meadow", "shore_meadow", 0),
-        Surface("sand", "shore_sand", 120),
-        Surface("pebbles", "shore_pebbles", 140),
-        Surface("moss", "shore_moss", 150),
-        Surface("snow", "shore_snow", 170),
-        Surface("autumn", "shore_autumn", 180),
+        Surface("sand", "shore_sand", 1200),
+        Surface("pebbles", "shore_pebbles", 1400),
+        Surface("moss", "shore_moss", 1500),
+        Surface("snow", "shore_snow", 1700),
+        Surface("autumn", "shore_autumn", 1800),
     ]
 
     /// Saved ponds. Three is enough for a summer pond, a winter one and one

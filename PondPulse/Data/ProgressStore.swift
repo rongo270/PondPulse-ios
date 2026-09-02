@@ -124,6 +124,7 @@ struct ProgressStore {
         /// earned - is not stored at all: `CoinBank.derived` recomputes it from
         /// stars, dailies, streak and rush bests every time, which is what makes
         /// coins impossible to farm by replaying a pond.
+        static let economyVersion = "economy_version"
         static let coinsGranted = "coins_granted"
         static let coinsSpent = "coins_spent"
 
@@ -384,6 +385,21 @@ struct ProgressStore {
         setOwned(owned.union([productId]))
     }
 
+    /// Hands over several products at once, in a single write.
+    func grantProducts(_ productIds: some Sequence<String>) {
+        setOwned(owned.union(productIds))
+    }
+
+    /// Testing only: adds seats to the pond without charging for them.
+    ///
+    /// Writes the same counter `buyPondSlot` does, so a seat handed over here is
+    /// a seat the pond genuinely has - and the next one bought still costs what
+    /// it should, because the price is read off how many are held.
+    func grantPondSlots(_ count: Int) {
+        let extra = defaults.integer(forKey: Keys.pondSlots)
+        defaults.set(min(extra + max(count, 0), CoinBank.slotPrices.count), forKey: Keys.pondSlots)
+    }
+
     func setPondFriends(_ ids: [String]) {
         defaults.set(ids.joined(separator: ","), forKey: Keys.pondFriends)
     }
@@ -460,6 +476,38 @@ struct ProgressStore {
     func recordRushBest(durationSec: Int, score: Int) {
         let key = Keys.rushBest(durationSec)
         defaults.set(max(defaults.integer(forKey: key), score), forKey: key)
+    }
+
+    // MARK: - Migration
+
+    /// The scale the stored coin totals are written in.
+    ///
+    /// 1 is the original economy; 2 is the ×10 rescale, where a friend costs
+    /// 1500 rather than 150 and a pond pays 50 rather than 5. It is a version
+    /// rather than a flag so the next change to the numbers has somewhere to go.
+    private static let economyVersion = 2
+
+    /// Brings a save written before the rescale up to today's numbers.
+    ///
+    /// Only two stored numbers are in coins at all - `coinsGranted` and
+    /// `coinsSpent` - because everything else is *derived* from progress and
+    /// recomputes itself at the new rate the first time it is read. Multiplying
+    /// both leaves the balance, which is their difference, exactly ten times
+    /// what it was: nobody who had earned three friends' worth of coins wakes up
+    /// able to afford a third of one.
+    ///
+    /// A fresh install runs this too, on three zeroes, and is stamped current -
+    /// so the next version of this function can trust the stamp rather than
+    /// having to guess from the numbers.
+    func migrateEconomy() {
+        let from = defaults.integer(forKey: Keys.economyVersion)
+        guard from < Self.economyVersion else { return }
+        if from < 2 {
+            defaults.set(coinsGranted * 10, forKey: Keys.coinsGranted)
+            defaults.set(coinsSpent * 10, forKey: Keys.coinsSpent)
+            defaults.set(pondWeekEarned * 10, forKey: Keys.pondWeekEarned)
+        }
+        defaults.set(Self.economyVersion, forKey: Keys.economyVersion)
     }
 
     /// Keeps the best score ever made in one of the pond's games.
