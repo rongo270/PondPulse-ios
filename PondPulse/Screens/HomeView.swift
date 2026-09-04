@@ -269,7 +269,7 @@ struct HomeView: View {
                             Achievements.earnedCount(vm.achievements),
                             Achievements.totalRungs
                         ]
-                    ) { vm.navigate(.achievements) }
+                    ) { vm.navigate(.quests) }
                     MenuTile(systemName: "bag.fill", label: strings["home_shop"]) { vm.navigate(.shop) }
                 }
                 .fixedSize(horizontal: false, vertical: true)

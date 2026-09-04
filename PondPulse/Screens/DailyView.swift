@@ -31,7 +31,7 @@ struct DailyView: View {
         self.vm = vm
         let day = vm.today()
         self.epochDay = day
-        _controller = StateObject(wrappedValue: GameController(spec: vm.dailySpec(day)) { _ in
+        _controller = StateObject(wrappedValue: GameController(spec: vm.dailySpec(day)) { _, _ in
             // The store refuses a second payout for the same day, so a replay
             // banks nothing and the card knows to stay quiet.
         })

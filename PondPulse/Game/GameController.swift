@@ -23,7 +23,7 @@ final class GameController: ObservableObject {
     /// it is the lesson, not a purchase.
     private let guided: Bool
 
-    private let onWin: (_ stars: Int) -> Void
+    private let onWin: (_ stars: Int, _ splashes: Int) -> Void
 
     @Published private(set) var state: GameState
 
@@ -63,7 +63,7 @@ final class GameController: ObservableObject {
     /// Bumps on every user-visible state change so a stale solver result is dropped.
     private var generation = 0
 
-    init(spec: LevelSpec, guided: Bool = false, onWin: @escaping (_ stars: Int) -> Void) {
+    init(spec: LevelSpec, guided: Bool = false, onWin: @escaping (_ stars: Int, _ splashes: Int) -> Void) {
         self.spec = spec
         self.guided = guided
         self.onWin = onWin
@@ -106,7 +106,7 @@ final class GameController: ObservableObject {
             clearHint()
         }
         recheckDeadEnd()
-        if state.won { onWin(stars()) }
+        if state.won { onWin(stars(), state.splashesUsed) }
         refreshGuide()
         return true
     }

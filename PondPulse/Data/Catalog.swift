@@ -220,6 +220,16 @@ enum Catalog {
     /// which one they like. The *displayed* price comes from StoreKit.
     static let specialCents = 99
 
+    /// A theme bought with money rather than coins.
+    ///
+    /// Two bands, because they are not the same kind of thing. Autumn Gold moved
+    /// off the coin shelf onto the cheaper one - it was always the prettiest of
+    /// the coin themes and it is still the gentlest thing money buys. Opal and
+    /// Ember were drawn for this band and cost more: the whole point of them is
+    /// that they do not look like the twelve palettes anyone can earn.
+    static let themeCents = 199
+    static let themeGrandCents = 299
+
     /// The coin packs, in catalog order - the one place money buys coins rather
     /// than the other way round. Product ids match `CoinBank.coinPacks` one for
     /// one, so a pack can never grant an amount the economy has not been priced
@@ -237,19 +247,29 @@ enum Catalog {
 
     // MARK: - Shelves
 
+    /// The theme shelf, in the order it reads: the two you start with, the two
+    /// you earn by playing, the six you save up for cheapest first, then the one
+    /// premium brings and the three money buys.
+    ///
+    /// Sorted the way the friends shelf is - by how it is unlocked, then by
+    /// price - because a shelf that mixes a free theme, a 5500-coin theme and a
+    /// level reward in its first three rows gives a new player no idea which of
+    /// them they could actually have.
     private static let authoredThemes: [ThemeItem] = [
         ThemeItem(id: "dusk", nameKey: "theme_dusk", palette: .duskPond, unlock: .free),
         ThemeItem(id: "sunny", nameKey: "theme_sunny", palette: .sunnyMorning, unlock: .free),
         ThemeItem(id: "jungle", nameKey: "theme_jungle", palette: .jungleMist, unlock: .levelReward(75)),
         ThemeItem(id: "goldenpond", nameKey: "theme_goldenpond", palette: .goldenPond, unlock: .bonusReward(10)),
         ThemeItem(id: "sakura", nameKey: "theme_sakura", palette: .sakuraPond, unlock: .coins(price: CoinBank.priceTheme)),
-        ThemeItem(id: "neon", nameKey: "theme_neon", palette: .midnightNeon, unlock: .coins(price: CoinBank.priceThemeRare)),
-        ThemeItem(id: "autumn", nameKey: "theme_autumn", palette: .autumnGold, unlock: .coins(price: CoinBank.priceTheme)),
         ThemeItem(id: "frozen", nameKey: "theme_frozen", palette: .frozenPond, unlock: .coins(price: CoinBank.priceTheme)),
         ThemeItem(id: "coral", nameKey: "theme_coral", palette: .coralReef, unlock: .coins(price: CoinBank.priceTheme)),
+        ThemeItem(id: "neon", nameKey: "theme_neon", palette: .midnightNeon, unlock: .coins(price: CoinBank.priceThemeRare)),
         ThemeItem(id: "galaxy", nameKey: "theme_galaxy", palette: .galaxyNight, unlock: .coins(price: CoinBank.priceThemeRare)),
         ThemeItem(id: "candy", nameKey: "theme_candy", palette: .candyPop, unlock: .coins(price: CoinBank.priceThemeRare)),
         ThemeItem(id: "royal", nameKey: "theme_royal", palette: .royalLagoon, unlock: .premium),
+        ThemeItem(id: "autumn", nameKey: "theme_autumn", palette: .autumnGold, unlock: .money(cents: themeCents)),
+        ThemeItem(id: "opal", nameKey: "theme_opal", palette: .opalLagoon, unlock: .money(cents: themeGrandCents)),
+        ThemeItem(id: "ember", nameKey: "theme_ember", palette: .emberHollow, unlock: .money(cents: themeGrandCents)),
     ]
 
     private static let authoredSkins: [SkinItem] = [
@@ -313,6 +333,10 @@ enum Catalog {
         SkinItem(id: "bubblegum", nameKey: "skin_bubblegum", unlock: .themeFriend("candy")),
         SkinItem(id: "royalswan", nameKey: "skin_royalswan", unlock: .themeFriend("royal")),
         SkinItem(id: "peacock", nameKey: "skin_peacock", unlock: .themeFriend("royal")),
+        SkinItem(id: "opalkoi", nameKey: "skin_opalkoi", unlock: .themeFriend("opal")),
+        SkinItem(id: "pearlswan", nameKey: "skin_pearlswan", unlock: .themeFriend("opal")),
+        SkinItem(id: "emberdrake", nameKey: "skin_emberdrake", unlock: .themeFriend("ember")),
+        SkinItem(id: "cindermoth", nameKey: "skin_cindermoth", unlock: .themeFriend("ember")),
 
         // The five special friends: the only things in PondPulse that cost
         // money on their own. A closed set, at the end of the shelf, so the
@@ -445,7 +469,12 @@ enum Catalog {
     /// checks before drawing a price. Anything not on it is bought with coins
     /// or earned by playing, and must never reach a purchase.
     static let moneyProductIds: [String] =
-        [premiumId, hintsId] + coinPackIds + specialSkins.map { skinProductId($0.id) }
+        [premiumId, hintsId] + coinPackIds
+            + specialSkins.map { skinProductId($0.id) }
+            + moneyThemes.map { themeProductId($0.id) }
+
+    /// The themes money buys outright, in shelf order.
+    static let moneyThemes: [ThemeItem] = themes.filter(\.unlock.isMoney)
 
     /// The product id a `Reward` is owned under.
     static func productIdOf(_ reward: Reward) -> String {

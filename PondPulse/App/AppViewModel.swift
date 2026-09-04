@@ -52,13 +52,13 @@ enum Screen: Equatable {
     /// covers the half of the pond you are trying to place something on.
     case decorate
 
-    /// The badge shelf: nine ladders, and where you are on each of them.
+    /// Quests: today's three, and the nine long ladders under them.
     ///
-    /// Its own screen rather than a panel in My Pond because most of its rows
-    /// are about the campaign, the daily and Splash Rush - none of which happen
-    /// in the pond - and because a shelf you can only reach through a pond you
-    /// have not opened yet is a shelf a new player never sees.
-    case achievements
+    /// Its own screen rather than a panel in My Pond because most of it is about
+    /// the campaign, the daily and Splash Rush - none of which happen in the
+    /// pond - and because a board you can only reach through a pond you have not
+    /// opened yet is a board a new player never sees.
+    case quests
 
     /// One ladder, rung by rung: what is behind you, what you are on, and every
     /// step still to come.
@@ -68,7 +68,7 @@ enum Screen: Equatable {
     /// that unfolds into eleven puts the shelf straight back where it was.
     /// Carries the family's raw value so `Screen` stays `Equatable` without
     /// `Achievements` having to be.
-    case achievementFamily(String)
+    case questLadder(String)
 }
 
 @MainActor
@@ -124,6 +124,10 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var miniBests: [String: Int]
     @Published private(set) var pondWeekStamp: Int
     @Published private(set) var pondWeekTotal: Int
+    /// Today's quest counters, republished on every bump so the board's bars
+    /// move while you are looking at them.
+    @Published private(set) var questCounters = Quests.Counters()
+    @Published private(set) var questPaid: Set<String> = []
 
     // The daily pond ---------------------------------------------------------
     @Published private(set) var dailyLastDay: Int
@@ -168,10 +172,19 @@ final class AppViewModel: ObservableObject {
         miniBests = store.miniBests
         pondWeekStamp = store.pondWeek
         pondWeekTotal = store.pondWeekEarned
+        questCounters = store.questCounters(day: currentEpochDay())
+        questPaid = store.questPaid(day: currentEpochDay())
         dailyLastDay = store.dailyLastDay
         dailyStreakStored = store.dailyStreak
         dailyBestStreak = store.dailyBestStreak
         dailyTotal = store.dailyTotal
+
+        // Settled here rather than only on the events that move the counters: a
+        // quest can be finished by the very last thing done before the app is
+        // killed, and a payout that only ever happens on the way *in* to a
+        // counter would lose that one for good. Cheap, and idempotent - a rung
+        // already written down in `questPaid` is never paid twice.
+        settleQuests()
         applyDebugLaunchOverrides()
 
         // Verified App Store outcomes flow back into the persisted state.
@@ -187,7 +200,7 @@ final class AppViewModel: ObservableObject {
 
     /// DEBUG-only launch overrides, the twin of Android's `pp_*` intent extras:
     /// `PP_START_LEVEL=<n>` jumps into a level, `PP_START_PACK=pack3` opens one
-    /// pack's ponds, `PP_START_SCREEN=packs|shop|rush|daily|pond|decorate|settings`
+    /// pack's ponds, `PP_START_SCREEN=packs|shop|rush|daily|pond|decorate|settings|friends|pads|themes|quests[:ladder]`
     /// opens a screen, `PP_START_GAME=chain|herd|seek|target` opens a mini game,
     /// `PP_START_BONUS=b-1` opens a golden pond, and `PP_PREMIUM=1` grants
     /// premium in memory. Passed via `SIMCTL_CHILD_*`; never affects a normal
@@ -216,6 +229,9 @@ final class AppViewModel: ObservableObject {
             switch screen {
             case "packs": backStack = [.home, .packs]
             case "shop": backStack = [.home, .shop]
+            case "friends": backStack = [.home, .shop, .shopShelf(.friends)]
+            case "pads": backStack = [.home, .shop, .shopShelf(.pads)]
+            case "themes": backStack = [.home, .shop, .shopShelf(.themes)]
             case "rush": backStack = [.home, .rush]
             case "daily": backStack = [.home, .daily]
             // "collection" still works: it was this screen's old name, and the
@@ -223,13 +239,13 @@ final class AppViewModel: ObservableObject {
             case "pond", "collection": backStack = [.home, .pond]
             case "decorate": backStack = [.home, .pond, .decorate]
             case "settings": backStack = [.home, .settings]
-            case "achievements": backStack = [.home, .achievements]
+            case "quests", "achievements": backStack = [.home, .quests]
             default:
-                // "achievements:stars" opens one ladder, the same way
-                // PP_START_PACK opens one pack.
-                if screen.hasPrefix("achievements:"),
-                   let family = Achievements.Family(rawValue: String(screen.dropFirst(13))) {
-                    backStack = [.home, .achievements, .achievementFamily(family.rawValue)]
+                // "quests:stars" opens one ladder, the same way PP_START_PACK
+                // opens one pack.
+                if screen.hasPrefix("quests:"),
+                   let family = Achievements.Family(rawValue: String(screen.dropFirst(7))) {
+                    backStack = [.home, .quests, .questLadder(family.rawValue)]
                 }
             }
         }
@@ -673,7 +689,60 @@ final class AppViewModel: ObservableObject {
         pondWeekStamp = store.pondWeek
         pondWeekTotal = store.pondWeekEarned
         coinsGranted = store.coinsGranted
+        let day = today()
+        store.addQuest(day: day, .miniRuns)
+        store.addQuest(day: day, .miniPoints, max(score, 0))
+        store.noteQuestGame(day: day, gameId: gameId)
+        settleQuests()
         return paid
+    }
+
+    // MARK: - Today's quests
+
+    /// Today's three, drawn from the date.
+    var questBoard: [Quests.Quest] { Quests.board(day: today()) }
+
+    /// Whether every quest on today's board is finished - and so whether the
+    /// bonus has been earned.
+    var questBoardDone: Bool {
+        let counters = questCounters
+        return questBoard.allSatisfy { $0.isDone(counters) }
+    }
+
+    /// Re-reads today's counters and pays for anything that has just finished.
+    ///
+    /// Called after every counter that moves rather than at the moment of the
+    /// win, so a quest that was completed by the same pond that completed
+    /// another one still pays for both - and so the board is correct even if the
+    /// app was killed between the doing and the looking.
+    private func settleQuests() {
+        let day = today()
+        questCounters = store.questCounters(day: day)
+        let board = Quests.board(day: day)
+        for quest in board where quest.isDone(questCounters) {
+            store.payQuest(day: day, id: quest.id, coins: quest.coins)
+        }
+        if board.allSatisfy({ $0.isDone(questCounters) }) {
+            store.payQuest(day: day, id: Self.questBonusId, coins: Quests.allDoneBonus)
+        }
+        questPaid = store.questPaid(day: day)
+        coinsGranted = store.coinsGranted
+    }
+
+    /// The id the all-three bonus is written down under. Not a quest kind, so it
+    /// can never collide with one.
+    static let questBonusId = "bonus"
+
+    /// Adds to one of today's counters and settles the board.
+    func noteQuest(_ counter: Quests.Counter, _ amount: Int = 1) {
+        store.addQuest(day: today(), counter, amount)
+        settleQuests()
+    }
+
+    /// Raises a best-of counter and settles the board.
+    func noteQuestBest(_ counter: Quests.Counter, _ value: Int) {
+        store.raiseQuest(day: today(), counter, to: value)
+        settleQuests()
     }
 
     // MARK: - The daily pond
@@ -709,14 +778,25 @@ final class AppViewModel: ObservableObject {
         dailyBestStreak = store.dailyBestStreak
         dailyTotal = store.dailyTotal
         hintsStored = store.hintsLeft
+        noteQuest(.daily)
         return payout
     }
 
     // MARK: - Wins
 
-    func recordWin(levelId: String, stars starCount: Int) {
+    func recordWin(levelId: String, stars starCount: Int, splashes: Int = 0) {
+        let before = stars[levelId] ?? 0
         store.recordResult(levelId: levelId, stars: starCount)
-        stars[levelId] = max(stars[levelId] ?? 0, starCount)
+        stars[levelId] = max(before, starCount)
+        // Quests count the play, not the progress: a pond re-cleared for the
+        // fourth time still counts towards "clear five ponds today", because the
+        // quest is asking what you did this morning rather than what you own.
+        let day = today()
+        store.addQuest(day: day, .ponds)
+        store.addQuest(day: day, .stars, max(starCount, 0))
+        if starCount >= 3 { store.addQuest(day: day, .three) }
+        store.addQuest(day: day, .splashes, max(splashes, 0))
+        settleQuests()
     }
 
     /// The golden pond whose clear just paid out its prize, if any. The win card
@@ -730,6 +810,7 @@ final class AppViewModel: ObservableObject {
         let granted = store.recordBonusResult(levelId: levelId, stars: starCount)
         stars[levelId] = max(stars[levelId] ?? 0, starCount)
         if granted { bonusPrizePaidFor = levelId }
+        if starCount > 0 { noteQuest(.golden) }
         return granted
     }
 
@@ -755,6 +836,10 @@ final class AppViewModel: ObservableObject {
     func recordRushScore(durationSec: Int, score: Int) {
         store.recordRushBest(durationSec: durationSec, score: score)
         rushBests[durationSec] = max(rushBests[durationSec] ?? 0, score)
+        let day = today()
+        store.addQuest(day: day, .rushRuns)
+        store.raiseQuest(day: day, .rushBest, to: score)
+        settleQuests()
     }
 
     // MARK: - Settings & cosmetics

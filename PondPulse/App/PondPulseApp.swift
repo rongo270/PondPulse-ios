@@ -66,13 +66,13 @@ struct RootView: View {
             PondView(vm: vm)
         case .pondGame(let gameId):
             PondGameView(vm: vm, gameId: gameId)
-        case .achievements:
-            AchievementsView(vm: vm)
-        case .achievementFamily(let raw):
+        case .quests:
+            QuestsView(vm: vm)
+        case .questLadder(let raw):
             if let family = Achievements.Family(rawValue: raw) {
-                AchievementFamilyView(vm: vm, family: family)
+                QuestLadderView(vm: vm, family: family)
             } else {
-                AchievementsView(vm: vm)
+                QuestsView(vm: vm)
             }
         case .decorate:
             DecorateView(vm: vm)
@@ -98,8 +98,8 @@ struct RootView: View {
         case .pond: "pond"
         case .pondGame(let gameId): "pondgame-\(gameId)"
         case .decorate: "decorate"
-        case .achievements: "achievements"
-        case .achievementFamily(let raw): "achievements-\(raw)"
+        case .quests: "quests"
+        case .questLadder(let raw): "quests-\(raw)"
         }
     }
 }

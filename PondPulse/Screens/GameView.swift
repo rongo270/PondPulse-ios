@@ -37,11 +37,11 @@ struct GameView: View {
         let spec = Levels.byId(levelId)
         let isGuided = Levels.isGuided(levelId)
         self.guided = isGuided
-        _controller = StateObject(wrappedValue: GameController(spec: spec, guided: isGuided) { stars in
+        _controller = StateObject(wrappedValue: GameController(spec: spec, guided: isGuided) { stars, splashes in
             if spec.isBonus {
                 vm.recordBonusWin(levelId: levelId, stars: stars)
             } else {
-                vm.recordWin(levelId: levelId, stars: stars)
+                vm.recordWin(levelId: levelId, stars: stars, splashes: splashes)
             }
         })
     }

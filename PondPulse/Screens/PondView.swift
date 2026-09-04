@@ -446,6 +446,7 @@ struct PondView: View {
             motion.splashes.append(PondSplash(at: at, born: motion.time))
             motion.shove(at: at)
             Haptics.tick(enabled: vm.haptics)
+            vm.noteQuest(.pondTaps)
         }
     }
 }

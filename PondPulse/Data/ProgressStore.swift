@@ -125,6 +125,14 @@ struct ProgressStore {
         /// stars, dailies, streak and rush bests every time, which is what makes
         /// coins impossible to farm by replaying a pond.
         static let economyVersion = "economy_version"
+
+        /// The day the quest counters belong to. Any other day and they read as
+        /// zero, which is what makes the board reset at midnight without a timer
+        /// and without a background task.
+        static let questDay = "quest_day"
+        static func questCount(_ counter: Quests.Counter) -> String { "quest_\(counter.rawValue)" }
+        static let questGames = "quest_games"
+        static let questPaid = "quest_paid"
         static let coinsGranted = "coins_granted"
         static let coinsSpent = "coins_spent"
 
@@ -476,6 +484,100 @@ struct ProgressStore {
     func recordRushBest(durationSec: Int, score: Int) {
         let key = Keys.rushBest(durationSec)
         defaults.set(max(defaults.integer(forKey: key), score), forKey: key)
+    }
+
+    // MARK: - Today's quest board
+
+    /// The day the stored counters belong to, or -1 on a fresh install.
+    private var questDay: Int { defaults.object(forKey: Keys.questDay) as? Int ?? -1 }
+
+    /// Today's counters, or all zeroes if what is stored belongs to a day that
+    /// has ended.
+    ///
+    /// Read rather than reset: a stale day is *answered* as zero instead of
+    /// being cleared on sight, so opening the app at one minute past midnight
+    /// does not have to write eleven keys before it can draw a screen. The
+    /// clearing happens on the first thing that actually counts.
+    func questCounters(day: Int) -> Quests.Counters {
+        guard questDay == day else { return Quests.Counters() }
+        var out = Quests.Counters()
+        out.ponds = defaults.integer(forKey: Keys.questCount(.ponds))
+        out.stars = defaults.integer(forKey: Keys.questCount(.stars))
+        out.three = defaults.integer(forKey: Keys.questCount(.three))
+        out.daily = defaults.integer(forKey: Keys.questCount(.daily))
+        out.golden = defaults.integer(forKey: Keys.questCount(.golden))
+        out.rushBest = defaults.integer(forKey: Keys.questCount(.rushBest))
+        out.rushRuns = defaults.integer(forKey: Keys.questCount(.rushRuns))
+        out.miniPoints = defaults.integer(forKey: Keys.questCount(.miniPoints))
+        out.miniRuns = defaults.integer(forKey: Keys.questCount(.miniRuns))
+        out.splashes = defaults.integer(forKey: Keys.questCount(.splashes))
+        out.pondTaps = defaults.integer(forKey: Keys.questCount(.pondTaps))
+        out.miniGames = Set(
+            (defaults.string(forKey: Keys.questGames) ?? "")
+                .split(separator: ",").map(String.init)
+        )
+        return out
+    }
+
+    /// Throws away yesterday's board, if what is stored is yesterday's.
+    private func rollQuestDay(to day: Int) {
+        guard questDay != day else { return }
+        for counter in [Quests.Counter.ponds, .stars, .three, .daily, .golden,
+                        .rushBest, .rushRuns, .miniPoints, .miniRuns, .splashes, .pondTaps] {
+            defaults.removeObject(forKey: Keys.questCount(counter))
+        }
+        defaults.removeObject(forKey: Keys.questGames)
+        defaults.removeObject(forKey: Keys.questPaid)
+        defaults.set(day, forKey: Keys.questDay)
+    }
+
+    /// Adds to one of today's counters.
+    func addQuest(day: Int, _ counter: Quests.Counter, _ amount: Int = 1) {
+        guard amount > 0 else { return }
+        rollQuestDay(to: day)
+        defaults.set(defaults.integer(forKey: Keys.questCount(counter)) + amount,
+                     forKey: Keys.questCount(counter))
+    }
+
+    /// Raises one of today's counters to `value` if it is higher - for the
+    /// counters that are a best rather than a total.
+    func raiseQuest(day: Int, _ counter: Quests.Counter, to value: Int) {
+        rollQuestDay(to: day)
+        defaults.set(max(defaults.integer(forKey: Keys.questCount(counter)), value),
+                     forKey: Keys.questCount(counter))
+    }
+
+    /// Notes that one of the pond's games was played today.
+    func noteQuestGame(day: Int, gameId: String) {
+        rollQuestDay(to: day)
+        var played = Set((defaults.string(forKey: Keys.questGames) ?? "")
+            .split(separator: ",").map(String.init))
+        played.insert(gameId)
+        defaults.set(played.sorted().joined(separator: ","), forKey: Keys.questGames)
+    }
+
+    /// What today has already been paid for - quest ids, plus "bonus".
+    func questPaid(day: Int) -> Set<String> {
+        guard questDay == day else { return [] }
+        return Set((defaults.string(forKey: Keys.questPaid) ?? "")
+            .split(separator: ",").map(String.init))
+    }
+
+    /// Pays a finished quest, once.
+    ///
+    /// The one payout in the game that is banked rather than derived, because a
+    /// day cannot be recomputed after it has ended - so it needs a written note
+    /// of what it already paid. The note is scoped to the day and goes in the
+    /// bin with it, which is the whole reason this is not the second ledger the
+    /// coin economy was built to avoid.
+    @discardableResult
+    func payQuest(day: Int, id: String, coins: Int) -> Bool {
+        rollQuestDay(to: day)
+        var paid = questPaid(day: day)
+        guard paid.insert(id).inserted, coins > 0 else { return false }
+        defaults.set(paid.sorted().joined(separator: ","), forKey: Keys.questPaid)
+        grantCoins(coins)
+        return true
     }
 
     // MARK: - Migration

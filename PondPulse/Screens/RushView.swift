@@ -168,7 +168,7 @@ private struct RushPlay: View {
         self.onQuit = onQuit
         self.onSkip = onSkip
         self.onSolved = onSolved
-        _controller = StateObject(wrappedValue: GameController(spec: spec) { _ in })
+        _controller = StateObject(wrappedValue: GameController(spec: spec) { _, _ in })
     }
 
     var body: some View {

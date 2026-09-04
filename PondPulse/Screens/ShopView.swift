@@ -228,13 +228,22 @@ struct ShopView: View {
             },
             onBuy: {
                 previewTheme = nil
-                pending = PendingBuy(
-                    productId: Catalog.themeProductId(theme.id),
-                    name: strings[theme.nameKey],
-                    price: theme.unlock.coinPrice ?? 0
-                ) { vm.selectTheme(theme.id) }
+                // Money and coins are two different confirmations: the App Store
+                // sheet is its own, and a coin purchase gets ours.
+                if theme.unlock.isMoney {
+                    buyForMoney(Catalog.themeProductId(theme.id)) { vm.selectTheme(theme.id) }
+                } else {
+                    pending = PendingBuy(
+                        productId: Catalog.themeProductId(theme.id),
+                        name: strings[theme.nameKey],
+                        price: theme.unlock.coinPrice ?? 0
+                    ) { vm.selectTheme(theme.id) }
+                }
             },
-            onDismiss: { previewTheme = nil }
+            onDismiss: { previewTheme = nil },
+            moneyPrice: theme.unlock.isMoney
+                ? vm.price(Catalog.themeProductId(theme.id), fallback: nil)
+                : nil
         )
         .transition(.opacity)
     }
@@ -607,13 +616,20 @@ struct ShopShelfView: View {
                     },
                     onBuy: {
                         previewTheme = nil
-                        pending = PendingBuy(
-                            productId: Catalog.themeProductId(theme.id),
-                            name: strings[theme.nameKey],
-                            price: theme.unlock.coinPrice ?? 0
-                        ) { vm.selectTheme(theme.id) }
+                        if theme.unlock.isMoney {
+                            buyForMoney(Catalog.themeProductId(theme.id))
+                        } else {
+                            pending = PendingBuy(
+                                productId: Catalog.themeProductId(theme.id),
+                                name: strings[theme.nameKey],
+                                price: theme.unlock.coinPrice ?? 0
+                            ) { vm.selectTheme(theme.id) }
+                        }
                     },
-                    onDismiss: { previewTheme = nil }
+                    onDismiss: { previewTheme = nil },
+                    moneyPrice: theme.unlock.isMoney
+                        ? vm.price(Catalog.themeProductId(theme.id), fallback: nil)
+                        : nil
                 )
                 .transition(.opacity)
             }
@@ -1170,9 +1186,14 @@ private struct ThemePreviewDialog: View {
     let onApply: () -> Void
     let onBuy: () -> Void
     let onDismiss: () -> Void
+    /// The App Store price, when this is a theme money buys. Nil while StoreKit
+    /// is still answering, which is also the signal not to offer the button:
+    /// a buy button with no price on it is a button nobody should press.
+    var moneyPrice: String?
 
     var body: some View {
         let palette = theme.palette
+        let friends = Catalog.friendsOfTheme(theme.id)
         ZStack {
             Color.black.opacity(0.55)
                 .ignoresSafeArea()
@@ -1188,11 +1209,51 @@ private struct ThemePreviewDialog: View {
                 ThemeScene(palette: palette, skinId: skinId, padId: padId)
                     .aspectRatio(7.0 / 4.0, contentMode: .fit)
                     .padding(.top, 14)
+
+                // The pair that comes with it. A theme friend has no other door
+                // - no price, no level, no golden pond - so the only place
+                // anyone can find out that buying the theme also buys two
+                // friends is here, on the theme.
+                if !friends.isEmpty {
+                    VStack(spacing: 6) {
+                        Text(strings["shop_theme_friends"])
+                            .font(.game(12, .semibold))
+                            .foregroundStyle(palette.textSecondary)
+                        HStack(spacing: 14) {
+                            ForEach(friends) { friend in
+                                VStack(spacing: 4) {
+                                    SkinPreview(skinId: friend.id)
+                                        .frame(width: 46, height: 46)
+                                    Text(strings[friend.nameKey])
+                                        .font(.game(11))
+                                        .foregroundStyle(palette.textSecondary)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+                                }
+                                .frame(maxWidth: 92)
+                            }
+                        }
+                    }
+                    .padding(.top, 14)
+                }
+
                 Group {
                     if selected {
                         GhostButton(strings["close"], action: onDismiss)
                     } else if usable {
                         PrimaryButton(strings["shop_preview_use"], action: onApply)
+                    } else if theme.unlock.isMoney {
+                        // Same rule as the paid friends: no price, no button.
+                        // The store being unreachable is a thing to say, not a
+                        // thing to spin about.
+                        VStack(spacing: 8) {
+                            Text(moneyPrice ?? strings["shop_price_unavailable"])
+                                .font(.game(16, .bold))
+                                .foregroundStyle(moneyPrice == nil ? palette.textSecondary : palette.accent)
+                            if moneyPrice != nil {
+                                PrimaryButton(strings["shop_buy_confirm"], action: onBuy)
+                            }
+                        }
                     } else if let price = theme.unlock.coinPrice {
                         // The price is always shown; the button only appears
                         // when it can actually be paid, so the dialog never ends

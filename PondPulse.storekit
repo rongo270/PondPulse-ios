@@ -151,6 +151,51 @@
       "productID": "skin_moonrabbit",
       "referenceName": "Moon Rabbit",
       "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "1.99",
+      "familyShareable": false,
+      "internalID": "2005",
+      "localizations": [
+        {
+          "description": "Autumn Gold Theme",
+          "displayName": "Autumn Gold Theme",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "theme_autumn",
+      "referenceName": "Autumn Gold Theme",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "2006",
+      "localizations": [
+        {
+          "description": "Opal Lagoon Theme",
+          "displayName": "Opal Lagoon Theme",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "theme_opal",
+      "referenceName": "Opal Lagoon Theme",
+      "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "2007",
+      "localizations": [
+        {
+          "description": "Ember Hollow Theme",
+          "displayName": "Ember Hollow Theme",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "theme_ember",
+      "referenceName": "Ember Hollow Theme",
+      "type": "NonConsumable"
     }
   ],
   "settings": {

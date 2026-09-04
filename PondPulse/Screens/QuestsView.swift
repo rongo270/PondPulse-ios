@@ -1,8 +1,18 @@
 //
-//  AchievementsView.swift
+//  QuestsView.swift
 //  PondPulse
 //
-//  The badge shelf, in two screens.
+//  Quests, in two halves and two screens.
+//
+//  **Today** is three quests drawn from the date - one gentle, one middling,
+//  one hard, of three different kinds - and a bonus for clearing all three.
+//  They are the half of the economy that never runs out: the ladders below them
+//  and the whole campaign together are worth about a fifth of the shop, and the
+//  other four fifths are bought a few hundred coins at a time, by turning up.
+//
+//  Unlike everything else on this screen, a quest's coins are *banked* rather
+//  than derived - a day that has ended cannot be recomputed - so a finished one
+//  is paid the moment it lands and written down for the day. See `Quests`.
 //
 //  **The shelf** is nine rows, one per family, and each row is one live bar:
 //  the goal you are working on, how far up it you are, and what it pays. It used
@@ -25,7 +35,7 @@
 
 import SwiftUI
 
-struct AchievementsView: View {
+struct QuestsView: View {
     @ObservedObject var vm: AppViewModel
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
@@ -42,6 +52,13 @@ struct AchievementsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    TodayBoard(vm: vm)
+
+                    Text(strings["quests_milestones"])
+                        .font(.game(16, .bold))
+                        .foregroundStyle(palette.textPrimary)
+                        .padding(.top, 18)
+
                     Text(strings["ach_subtitle", earned, Achievements.totalRungs])
                         .font(.game(13))
                         .foregroundStyle(palette.textSecondary)
@@ -70,7 +87,7 @@ struct AchievementsView: View {
 
                     ForEach(Achievements.Family.allCases) { family in
                         FamilyRow(standing: Achievements.standing(family, snapshot)) {
-                            vm.navigate(.achievementFamily(family.rawValue))
+                            vm.navigate(.questLadder(family.rawValue))
                         }
                     }
                 }
@@ -81,6 +98,142 @@ struct AchievementsView: View {
         }
         .pondContentWidth()
         .background(palette.background.ignoresSafeArea())
+    }
+}
+
+// MARK: - Today
+
+/// The three quests drawn for today, and the bonus for clearing all three.
+///
+/// No Claim buttons: a finished quest has already paid by the time its bar
+/// fills, exactly like the ladders under it. The tick is a receipt, not a
+/// button, and the line under the heading says so.
+private struct TodayBoard: View {
+    @ObservedObject var vm: AppViewModel
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+
+    var body: some View {
+        let board = vm.questBoard
+        let counters = vm.questCounters
+        let done = board.count { $0.isDone(counters) }
+        let allDone = done == board.count
+
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(strings["quests_today"])
+                    .font(.game(16, .bold))
+                    .foregroundStyle(palette.textPrimary)
+                Spacer(minLength: 4)
+                Text(strings["ach_desc_progress", done, board.count])
+                    .font(.game(13))
+                    .foregroundStyle(allDone ? palette.accent : palette.textSecondary)
+            }
+            Text(strings["quests_reset"])
+                .font(.game(12))
+                .foregroundStyle(palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(board) { quest in
+                QuestRow(quest: quest, counters: counters)
+            }
+
+            // The bonus reads as a fourth row rather than as a badge on the
+            // third, because it is a fourth payout and hiding it inside the last
+            // quest would make finishing the board look like it paid nothing.
+            BonusRow(coins: Quests.allDoneBonus, done: allDone, of: board.count)
+        }
+    }
+}
+
+private struct QuestRow: View {
+    let quest: Quests.Quest
+    let counters: Quests.Counters
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+
+    var body: some View {
+        let done = quest.isDone(counters)
+        HStack(alignment: .center, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(done ? palette.accent.opacity(0.22) : palette.background)
+                Image(systemName: done ? "checkmark" : quest.kind.symbol)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(done ? palette.accent : palette.textSecondary)
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(strings[quest.kind.titleKey, quest.goal])
+                    .font(.game(14, .bold))
+                    .foregroundStyle(done ? palette.textPrimary : palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ProgressBar(fraction: quest.fraction(counters), done: done)
+                Text(
+                    done
+                        ? strings["ach_earned"]
+                        : strings["ach_desc_progress", quest.progress(counters), quest.goal]
+                )
+                .font(.game(11))
+                .foregroundStyle(done ? palette.accent : palette.textSecondary.opacity(0.85))
+            }
+
+            Spacer(minLength: 6)
+
+            HStack(spacing: 4) {
+                CoinIcon(size: 13)
+                Text(strings["ach_reward", quest.coins])
+                    .font(.game(14, .bold))
+                    .foregroundStyle(done ? palette.accent : palette.textSecondary)
+            }
+            .fixedSize()
+        }
+        .padding(12)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(done ? palette.accent.opacity(0.7) : .clear, lineWidth: 1.5)
+        )
+    }
+}
+
+private struct BonusRow: View {
+    let coins: Int
+    let done: Bool
+    let of: Int
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: done ? "gift.fill" : "gift")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(done ? palette.accent : palette.textSecondary)
+                .frame(width: 34)
+            Text(strings["quests_bonus", of])
+                .font(.game(13, .bold))
+                .foregroundStyle(done ? palette.textPrimary : palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+            HStack(spacing: 4) {
+                CoinIcon(size: 13)
+                Text(strings["ach_reward", coins])
+                    .font(.game(14, .bold))
+                    .foregroundStyle(done ? palette.accent : palette.textSecondary)
+            }
+            .fixedSize()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(done ? palette.accent.opacity(0.14) : palette.surface.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(palette.accent.opacity(done ? 0.7 : 0.25), lineWidth: 1.5)
+        )
     }
 }
 
@@ -163,7 +316,7 @@ private struct FamilyRow: View {
 // MARK: - One ladder
 
 /// Every rung of one family, in order.
-struct AchievementFamilyView: View {
+struct QuestLadderView: View {
     @ObservedObject var vm: AppViewModel
     let family: Achievements.Family
     @Environment(\.palette) private var palette
