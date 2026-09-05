@@ -72,7 +72,11 @@ enum Quests {
     }
 
     /// One of today's counters. Raw values are the storage keys' suffixes.
-    enum Counter: String {
+    ///
+    /// `CaseIterable` so that "every counter" - clearing yesterday's board, or
+    /// wiping one on a reset - is the list itself rather than a copy of it kept
+    /// in step by hand.
+    enum Counter: String, CaseIterable {
         case ponds, stars, three, daily, golden
         case rushBest = "rush_best", rushRuns = "rush_runs"
         case miniPoints = "mini_points", miniRuns = "mini_runs"

@@ -134,6 +134,15 @@ struct DecorateView: View {
     @State private var filter: DecorFilter = .all
     @State private var gridExpanded = false
 
+    /// How wide the decoration shelf actually is, measured rather than assumed.
+    ///
+    /// The chips are square art with two lines under it, so a chip is as tall as
+    /// a column is wide - and a column is only as wide as the screen allows. A
+    /// fixed shelf height was right on the wide screens it was written on and cut
+    /// the price line off the bottom of every chip on a 4.7" phone, which is the
+    /// one number on the chip a player is shopping by.
+    @State private var shelfWidth: CGFloat = 0
+
     /// The undo stack. Session-only and deliberately so: it is a safety net for
     /// the arrangement being made right now, not a version history.
     ///
@@ -681,14 +690,19 @@ struct DecorateView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
         } else {
+            let side = Self.chipSide(in: shelfWidth)
             ScrollView(showsIndicators: false) {
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 84), spacing: 8)],
-                    spacing: 8
+                    columns: Array(
+                        repeating: GridItem(.fixed(side), spacing: Self.chipSpacing),
+                        count: Self.chipColumns(in: shelfWidth)
+                    ),
+                    spacing: Self.chipSpacing
                 ) {
                     ForEach(shown) { item in
                         DecorChip(
                             item: item,
+                            side: side,
                             owned: vm.isDecorOwned(item),
                             out: vm.decorStored.contains(item.id),
                             selected: selected == item.id,
@@ -698,12 +712,48 @@ struct DecorateView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, Self.shelfInset)
                 .padding(.vertical, 6)
             }
-            .frame(height: gridExpanded ? 262 : 134)
+            .frame(height: Self.shelfHeight(side: side, rows: gridExpanded ? 2 : 1))
+            .background {
+                GeometryReader { geo in
+                    Color.clear.onAppear { shelfWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, width in shelfWidth = width }
+                }
+            }
             .animation(.easeInOut(duration: 0.18), value: gridExpanded)
         }
+    }
+
+    // MARK: The shelf's arithmetic
+    //
+    // Kept together and used by both the grid and its height, so the two can
+    // never disagree about how big a chip is.
+
+    /// Smallest a chip may be before a column is dropped.
+    private static let chipMinimum: CGFloat = 84
+    private static let chipSpacing: CGFloat = 8
+    private static let shelfInset: CGFloat = 14
+
+    /// Name and price under the art, plus the gaps around them.
+    private static let chipCaption: CGFloat = 40
+
+    private static func chipColumns(in width: CGFloat) -> Int {
+        let usable = max(width - shelfInset * 2, chipMinimum)
+        return max(Int((usable + chipSpacing) / (chipMinimum + chipSpacing)), 1)
+    }
+
+    private static func chipSide(in width: CGFloat) -> CGFloat {
+        let usable = max(width - shelfInset * 2, chipMinimum)
+        let columns = CGFloat(chipColumns(in: width))
+        return max((usable - chipSpacing * (columns - 1)) / columns, chipMinimum)
+    }
+
+    /// Tall enough for `rows` whole chips, whatever the phone.
+    private static func shelfHeight(side: CGFloat, rows: Int) -> CGFloat {
+        let row = side + chipCaption
+        return row * CGFloat(rows) + chipSpacing * CGFloat(rows - 1) + 12
     }
 
     /// What you can do with whatever is selected: buy it, or put it in and out.
@@ -894,6 +944,9 @@ private struct DecorChip: View {
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
     let item: PondCatalog.Decor
+    /// The square the art is drawn in. Passed in so the chip and the shelf that
+    /// has to be tall enough for it are working from the same number.
+    let side: CGFloat
     let owned: Bool
     let out: Bool
     let selected: Bool
@@ -916,7 +969,7 @@ private struct DecorChip: View {
                         palette: palette, phase: 0.7
                     )
                 }
-                .aspectRatio(1, contentMode: .fit)
+                .frame(width: side, height: side)
                 .overlay(alignment: .topTrailing) {
                     if owned && !out {
                         Image(systemName: "checkmark")

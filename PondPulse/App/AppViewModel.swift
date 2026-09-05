@@ -195,6 +195,12 @@ final class AppViewModel: ObservableObject {
         Task { [weak self] in
             await self?.storeManager.load()
             self?.prices = self?.storeManager.displayPrices ?? [:]
+            // What the App Store says was bought, as a floor under the local
+            // receipt: a pack bought by a build that predates the receipt would
+            // otherwise be a pack a reset forgot about.
+            if let bought = await self?.storeManager.purchasedCoinTotal() {
+                self?.store.syncCoinsBought(atLeast: bought)
+            }
         }
     }
 
@@ -993,8 +999,10 @@ final class AppViewModel: ObservableObject {
         hintsStored = store.hintsLeft
     }
 
+    /// A verified coin pack. Banked as *bought* rather than earned, so a reset
+    /// hands it straight back - see `ProgressStore.resetProgress`.
     private func creditCoins(_ amount: Int) {
-        store.grantCoins(amount)
+        store.grantPurchasedCoins(amount)
         coinsGranted = store.coinsGranted
     }
 
@@ -1025,6 +1033,11 @@ final class AppViewModel: ObservableObject {
         dailyStreakStored = store.dailyStreak
         dailyBestStreak = store.dailyBestStreak
         dailyTotal = store.dailyTotal
+        // The quest board was wiped with everything else; the screens holding
+        // the old counters have to be told, or a reset leaves half-filled bars
+        // over a save with nothing behind them.
+        questCounters = store.questCounters(day: currentEpochDay())
+        questPaid = store.questPaid(day: currentEpochDay())
         bonusPrizePaidFor = nil
         goHome()
     }

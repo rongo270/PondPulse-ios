@@ -13,7 +13,12 @@ struct SettingsView: View {
     @ObservedObject var vm: AppViewModel
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
+    /// The reset asks twice, and the two questions are deliberately different:
+    /// the first says what is about to be lost, the second only asks whether
+    /// you meant it. One alert is a tap away from wiping a hundred ponds by
+    /// muscle memory; two, worded apart, are a decision.
     @State private var confirmReset = false
+    @State private var confirmResetFinal = false
     @State private var pickLanguage = false
     @State private var picking: CosmeticKind?
 
@@ -251,14 +256,29 @@ struct SettingsView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        // Step one: what a reset costs. "Continue" is an ordinary button, not a
+        // destructive one - nothing is destroyed by pressing it.
         .alert(strings["settings_reset_confirm_title"], isPresented: $confirmReset) {
-            Button(strings["settings_reset_confirm_yes"], role: .destructive) {
-                vm.resetProgress()
-            }
+            Button(strings["settings_reset_continue"]) { confirmResetFinal = true }
             Button(strings["settings_reset_confirm_no"], role: .cancel) {}
         } message: {
             Text(strings["settings_reset_confirm_body"])
         }
+        // Step two: the last word, and the only button in the whole flow that
+        // actually erases anything. Attached to the background rather than
+        // alongside the first alert, because SwiftUI will quietly drop a second
+        // alert raised on the same view while the first is still dismissing.
+        .background(
+            Color.clear
+                .alert(strings["settings_reset_confirm2_title"], isPresented: $confirmResetFinal) {
+                    Button(strings["settings_reset_confirm2_yes"], role: .destructive) {
+                        vm.resetProgress()
+                    }
+                    Button(strings["settings_reset_confirm_no"], role: .cancel) {}
+                } message: {
+                    Text(strings["settings_reset_confirm2_body"])
+                }
+        )
     }
 }
 

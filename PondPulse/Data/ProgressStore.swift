@@ -141,6 +141,15 @@ struct ProgressStore {
         static let coinsGranted = "coins_granted"
         static let coinsSpent = "coins_spent"
 
+        /// The part of `coinsGranted` that was paid for with money, as its own
+        /// lifetime total. Only the coin packs write it, and nothing ever
+        /// subtracts from it - it is not a balance, it is the receipt.
+        ///
+        /// It exists for exactly one moment: a reset wipes the ledger back to
+        /// this number rather than to zero, so a player starts over with the
+        /// coins they *bought* and none of the coins they *earned*.
+        static let coinsBought = "coins_bought"
+
         /// The mini games' weekly ceiling, as a week stamp and a running total
         /// inside it. Stored together so rolling over to a new week is one
         /// comparison rather than a scheduled job: any write that finds a stale
@@ -254,6 +263,9 @@ struct ProgressStore {
 
     /// Coins bought or paid out by the pond, as a lifetime total.
     var coinsGranted: Int { defaults.integer(forKey: Keys.coinsGranted) }
+
+    /// The money-bought half of `coinsGranted`; what a reset leaves behind.
+    var coinsBought: Int { defaults.integer(forKey: Keys.coinsBought) }
 
     /// Coins spent, as a lifetime total.
     var coinsSpent: Int { defaults.integer(forKey: Keys.coinsSpent) }
@@ -537,8 +549,7 @@ struct ProgressStore {
     /// Throws away yesterday's board, if what is stored is yesterday's.
     private func rollQuestDay(to day: Int) {
         guard questDay != day else { return }
-        for counter in [Quests.Counter.ponds, .stars, .three, .daily, .golden,
-                        .rushBest, .rushRuns, .miniPoints, .miniRuns, .splashes, .pondTaps] {
+        for counter in Quests.Counter.allCases {
             defaults.removeObject(forKey: Keys.questCount(counter))
         }
         defaults.removeObject(forKey: Keys.questGames)
@@ -679,9 +690,32 @@ struct ProgressStore {
         spending(derived: derived, price: price) { }
     }
 
-    /// Credits a bought coin pack. Like every purchase, coins survive a reset.
+    /// Credits coins the game paid out - a quest, a mini game, a test button.
+    /// These are earned, so a reset takes them back.
     func grantCoins(_ amount: Int) {
+        guard amount > 0 else { return }
         defaults.set(coinsGranted + amount, forKey: Keys.coinsGranted)
+    }
+
+    /// Credits a coin pack bought with money.
+    ///
+    /// Banked twice on purpose: once in the balance everyone spends from, and
+    /// once in the receipt a reset restores. Only StoreKit reaches this - a
+    /// payout that arrived by any other route is earned, not bought.
+    func grantPurchasedCoins(_ amount: Int) {
+        guard amount > 0 else { return }
+        defaults.set(coinsBought + amount, forKey: Keys.coinsBought)
+        grantCoins(amount)
+    }
+
+    /// Raises the receipt to `total` if the App Store knows about more bought
+    /// coins than this install does - a build that started keeping the receipt
+    /// after the packs were already bought, or a device restored from a backup
+    /// that predates them. Never lowers it, and never grants coins: the balance
+    /// is only ever moved by an actual purchase.
+    func syncCoinsBought(atLeast total: Int) {
+        guard total > coinsBought else { return }
+        defaults.set(total, forKey: Keys.coinsBought)
     }
 
     /// Pays a mini game out against the week's ceiling and returns what it
@@ -740,12 +774,16 @@ struct ProgressStore {
     /// player standing in a fully decorated pond with their friends still in it
     /// - and, worse, silently repossessed every level and golden-pond cosmetic
     /// anyway, because those are *derived* from the star map rather than stored.
-    /// So the old reset both kept too much and took too much. It keeps exactly
-    /// one thing now: the premium upgrade, and the coins someone bought.
+    /// So the old reset both kept too much and took too much. It keeps one kind
+    /// of thing now: whatever was paid for with money - the premium upgrade, the
+    /// friends sold as products, and the coins out of a coin pack.
     ///
-    /// `coinsGranted` survives for that reason and `coinsSpent` is cleared with
-    /// everything else, so a player gets back the coins they paid for rather
-    /// than a balance already spent on items they no longer own.
+    /// Coins go the same way. The balance is `derived + granted - spent`: the
+    /// derived half zeroes itself the moment the stars do, `coinsSpent` is
+    /// cleared, and `coinsGranted` drops to `coinsBought` - the money-bought
+    /// receipt. So a player comes out of a reset holding exactly the coins they
+    /// paid for, in full and unspent, and none of the thousands a quest board
+    /// or a week of mini games had handed them.
     func resetProgress() {
         for level in Levels.all + Levels.bonusPonds {
             defaults.removeObject(forKey: Keys.stars(level.id))
@@ -775,9 +813,24 @@ struct ProgressStore {
         // would mean re-clearing one silently, with no card.
         defaults.removeObject(forKey: Keys.bonusPaid)
 
+        // The coin ledger, back to the receipt. `coinsBought` itself is never
+        // touched: it is what was paid for, and paying twice for the same coins
+        // is the one thing a reset must not be able to do.
+        defaults.set(coinsBought, forKey: Keys.coinsGranted)
         defaults.removeObject(forKey: Keys.coinsSpent)
         defaults.removeObject(forKey: Keys.pondWeek)
         defaults.removeObject(forKey: Keys.pondWeekEarned)
+
+        // Today's quest board goes too. It used to be left standing, which left
+        // a freshly reset save looking at half-finished quests it had earned on
+        // the progress that was just deleted - and, because the paid ledger
+        // stayed with it, unable to be paid for finishing them again.
+        defaults.removeObject(forKey: Keys.questDay)
+        for counter in Quests.Counter.allCases {
+            defaults.removeObject(forKey: Keys.questCount(counter))
+        }
+        defaults.removeObject(forKey: Keys.questGames)
+        defaults.removeObject(forKey: Keys.questPaid)
 
         // Back to a bare pond: nothing equipped, nothing placed, the starting
         // seats, and the default sky.

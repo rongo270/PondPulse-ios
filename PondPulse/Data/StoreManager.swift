@@ -116,6 +116,25 @@ final class StoreManager {
         await syncEntitlements()
     }
 
+    /// Every coin this account has ever bought, read off the App Store's own
+    /// transaction history.
+    ///
+    /// Consumables are not entitlements - nothing re-delivers them and nothing
+    /// here grants them. This is only ever used as a floor for the local
+    /// receipt, so that a reset gives back the packs bought before the app
+    /// started keeping that number. Revoked (refunded) transactions are left
+    /// out, for the obvious reason.
+    func purchasedCoinTotal() async -> Int {
+        var total = 0
+        for await entry in Transaction.all {
+            guard case .verified(let transaction) = entry,
+                  transaction.revocationDate == nil,
+                  let coins = Catalog.coinsInPack(transaction.productID) else { continue }
+            total += coins * max(transaction.purchasedQuantity, 1)
+        }
+        return total
+    }
+
     /// Grants every currently held non-consumable (launch, restore, new device).
     private func syncEntitlements() async {
         for await entitlement in Transaction.currentEntitlements {
