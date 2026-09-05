@@ -111,6 +111,9 @@ final class AppViewModel: ObservableObject {
     // Coins ------------------------------------------------------------------
     @Published private(set) var coinsGranted: Int
     @Published private(set) var coinsSpent: Int
+    /// The day the first-clear bonus was last paid. Published because the home
+    /// screen offers the bonus until it is taken.
+    @Published private(set) var firstClearDay: Int
 
     // The pond ---------------------------------------------------------------
     @Published private(set) var pondWeather: String
@@ -161,6 +164,7 @@ final class AppViewModel: ObservableObject {
         unlockAllFlag = store.unlockAll
         coinsGranted = store.coinsGranted
         coinsSpent = store.coinsSpent
+        firstClearDay = store.firstClearDay
         pondWeather = store.pondWeather
         pondWater = store.pondWater
         pondShore = store.pondShore
@@ -702,6 +706,14 @@ final class AppViewModel: ObservableObject {
     /// Today's three, drawn from the date.
     var questBoard: [Quests.Quest] { Quests.board(day: today()) }
 
+    /// How many of today's three are finished. What the home screen's tile
+    /// counts: the number that moves today, rather than the badge shelf's
+    /// lifetime total, which moves a handful of times a month.
+    var questsDoneToday: Int {
+        let counters = questCounters
+        return questBoard.reduce(0) { $0 + ($1.isDone(counters) ? 1 : 0) }
+    }
+
     /// Whether every quest on today's board is finished - and so whether the
     /// bonus has been earned.
     var questBoardDone: Bool {
@@ -778,11 +790,27 @@ final class AppViewModel: ObservableObject {
         dailyBestStreak = store.dailyBestStreak
         dailyTotal = store.dailyTotal
         hintsStored = store.hintsLeft
+        claimFirstClearOfDay()
         noteQuest(.daily)
         return payout
     }
 
     // MARK: - Wins
+
+    /// Whether today's first pond has already paid its bonus.
+    var firstClearClaimedToday: Bool { firstClearDay == today() }
+
+    /// Pays the day's first clear, whichever kind of pond it was.
+    ///
+    /// One call site per kind of win rather than one inside `recordResult`,
+    /// because a golden pond and a daily bank their stars through paths of their
+    /// own - and a bonus that only some ponds could pay would be a bonus the
+    /// player could not predict.
+    private func claimFirstClearOfDay() {
+        guard store.claimFirstClear(day: today()) > 0 else { return }
+        firstClearDay = store.firstClearDay
+        coinsGranted = store.coinsGranted
+    }
 
     func recordWin(levelId: String, stars starCount: Int, splashes: Int = 0) {
         let before = stars[levelId] ?? 0
@@ -796,6 +824,7 @@ final class AppViewModel: ObservableObject {
         store.addQuest(day: day, .stars, max(starCount, 0))
         if starCount >= 3 { store.addQuest(day: day, .three) }
         store.addQuest(day: day, .splashes, max(splashes, 0))
+        if starCount > 0 { claimFirstClearOfDay() }
         settleQuests()
     }
 
@@ -810,7 +839,10 @@ final class AppViewModel: ObservableObject {
         let granted = store.recordBonusResult(levelId: levelId, stars: starCount)
         stars[levelId] = max(stars[levelId] ?? 0, starCount)
         if granted { bonusPrizePaidFor = levelId }
-        if starCount > 0 { noteQuest(.golden) }
+        if starCount > 0 {
+            claimFirstClearOfDay()
+            noteQuest(.golden)
+        }
         return granted
     }
 
@@ -1018,6 +1050,7 @@ final class AppViewModel: ObservableObject {
         padId = store.selectedPad
         coinsSpent = store.coinsSpent
         coinsGranted = store.coinsGranted
+        firstClearDay = store.firstClearDay
         miniBests = store.miniBests
         pondWeather = store.pondWeather
         pondWater = store.pondWater

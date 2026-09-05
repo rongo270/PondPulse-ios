@@ -315,7 +315,15 @@ struct PondView: View {
                     PondAction(icon: "leaf.fill", label: strings["pond_decorate"]) {
                         vm.navigate(.decorate)
                     }
-                    PondAction(icon: "gamecontroller.fill", label: strings["pond_games"]) {
+                    // What the week has left to pay, on the button rather than
+                    // only inside the sheet behind it: the games are worth
+                    // opening because they still pay, and a player cannot want
+                    // a number they have to go and look for.
+                    PondAction(
+                        icon: "gamecontroller.fill",
+                        label: strings["pond_games"],
+                        badge: pondWeekLeft > 0 ? "\(pondWeekLeft)" : nil
+                    ) {
                         panel = .games
                     }
                     PondAction(icon: "rectangle.grid.2x2.fill", label: strings["pond_roster"]) {
@@ -339,6 +347,11 @@ struct PondView: View {
         }
         .animation(.easeInOut(duration: 0.22), value: panel)
         .animation(.easeInOut(duration: 0.28), value: bare)
+    }
+
+    /// Coins the pond's games can still pay out this week.
+    private var pondWeekLeft: Int {
+        max(CoinBank.pondWeeklyCap - vm.pondEarnedThisWeek, 0)
     }
 
     private func pondCanvas(cast: [String], decorOwned: [PondCatalog.Decor]) -> some View {

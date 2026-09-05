@@ -37,6 +37,14 @@ enum CoinBank {
     /// A golden pond. Worth three ordinary clears - they are optional and rare.
     static let goldenPond = 150
 
+    /// The first pond cleared on any given day, campaign, golden or daily.
+    ///
+    /// Small on purpose. It is not meant to be worth playing for - it is meant
+    /// to make opening the app worth something on a day you only have one pond
+    /// in you, which is the day a habit is actually won or lost. Granted rather
+    /// than derived, like a quest: a day that has ended cannot be recomputed.
+    static let firstClearBonus = 25
+
     /// Each Daily Pond ever cleared.
     ///
     /// Half what the ×10 rescale would have made it, because the daily is now

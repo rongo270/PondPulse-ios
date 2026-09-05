@@ -99,97 +99,113 @@ enum L10n {
               "settings_reset_continue": "Continue",
               "settings_reset_confirm2_title": "Are you sure?",
               "settings_reset_confirm2_body": "This erases your pond, your stars and your coins. It cannot be undone.",
-              "settings_reset_confirm2_yes": "Erase everything"
+              "settings_reset_confirm2_yes": "Erase everything",
+              "home_first_clear": "First pond today"
         ],
         .de: ["shop_restore": "Käufe wiederherstellen", "shop_restored": "Käufe wiederhergestellt",
               "settings_reset_continue": "Weiter",
               "settings_reset_confirm2_title": "Bist du sicher?",
               "settings_reset_confirm2_body": "Das löscht deinen Teich, deine Sterne und deine Münzen. Es lässt sich nicht rückgängig machen.",
-              "settings_reset_confirm2_yes": "Alles löschen"
+              "settings_reset_confirm2_yes": "Alles löschen",
+              "home_first_clear": "Erster Teich heute"
         ],
         .es: ["shop_restore": "Restaurar compras", "shop_restored": "Compras restauradas",
               "settings_reset_continue": "Continuar",
               "settings_reset_confirm2_title": "¿Seguro?",
               "settings_reset_confirm2_body": "Esto borra tu estanque, tus estrellas y tus monedas. No se puede deshacer.",
-              "settings_reset_confirm2_yes": "Borrar todo"
+              "settings_reset_confirm2_yes": "Borrar todo",
+              "home_first_clear": "Primer estanque de hoy"
         ],
         .fr: ["shop_restore": "Restaurer les achats", "shop_restored": "Achats restaurés",
               "settings_reset_continue": "Continuer",
               "settings_reset_confirm2_title": "Tu es sûr ?",
               "settings_reset_confirm2_body": "Cela efface ton étang, tes étoiles et tes pièces. C’est irréversible.",
-              "settings_reset_confirm2_yes": "Tout effacer"
+              "settings_reset_confirm2_yes": "Tout effacer",
+              "home_first_clear": "Premier étang du jour"
         ],
         .id: ["shop_restore": "Pulihkan pembelian", "shop_restored": "Pembelian dipulihkan",
               "settings_reset_continue": "Lanjut",
               "settings_reset_confirm2_title": "Yakin?",
               "settings_reset_confirm2_body": "Ini menghapus kolam, bintang, dan koinmu. Tidak bisa dibatalkan.",
-              "settings_reset_confirm2_yes": "Hapus semua"
+              "settings_reset_confirm2_yes": "Hapus semua",
+              "home_first_clear": "Kolam pertama hari ini"
         ],
         .it: ["shop_restore": "Ripristina acquisti", "shop_restored": "Acquisti ripristinati",
               "settings_reset_continue": "Continua",
               "settings_reset_confirm2_title": "Sei sicuro?",
               "settings_reset_confirm2_body": "Questo cancella il tuo stagno, le tue stelle e le tue monete. Non si può annullare.",
-              "settings_reset_confirm2_yes": "Cancella tutto"
+              "settings_reset_confirm2_yes": "Cancella tutto",
+              "home_first_clear": "Primo stagno di oggi"
         ],
         .pl: ["shop_restore": "Przywróć zakupy", "shop_restored": "Zakupy przywrócone",
               "settings_reset_continue": "Dalej",
               "settings_reset_confirm2_title": "Na pewno?",
               "settings_reset_confirm2_body": "To skasuje twój staw, gwiazdki i monety. Tego nie da się cofnąć.",
-              "settings_reset_confirm2_yes": "Skasuj wszystko"
+              "settings_reset_confirm2_yes": "Skasuj wszystko",
+              "home_first_clear": "Pierwszy staw dziś"
         ],
         .pt: ["shop_restore": "Restaurar compras", "shop_restored": "Compras restauradas",
               "settings_reset_continue": "Continuar",
               "settings_reset_confirm2_title": "Tens a certeza?",
               "settings_reset_confirm2_body": "Isto apaga o teu lago, as tuas estrelas e as tuas moedas. Não pode ser desfeito.",
-              "settings_reset_confirm2_yes": "Apagar tudo"
+              "settings_reset_confirm2_yes": "Apagar tudo",
+              "home_first_clear": "Primeiro lago de hoje"
         ],
         .tr: ["shop_restore": "Satın alımları geri yükle", "shop_restored": "Satın alımlar geri yüklendi",
               "settings_reset_continue": "Devam",
               "settings_reset_confirm2_title": "Emin misin?",
               "settings_reset_confirm2_body": "Bu; göletini, yıldızlarını ve altınlarını siler. Geri alınamaz.",
-              "settings_reset_confirm2_yes": "Her şeyi sil"
+              "settings_reset_confirm2_yes": "Her şeyi sil",
+              "home_first_clear": "Bugünün ilk göleti"
         ],
         .ru: ["shop_restore": "Восстановить покупки", "shop_restored": "Покупки восстановлены",
               "settings_reset_continue": "Продолжить",
               "settings_reset_confirm2_title": "Вы уверены?",
               "settings_reset_confirm2_body": "Это сотрёт ваш пруд, звёзды и монеты. Отменить будет нельзя.",
-              "settings_reset_confirm2_yes": "Стереть всё"
+              "settings_reset_confirm2_yes": "Стереть всё",
+              "home_first_clear": "Первый пруд сегодня"
         ],
         .he: ["shop_restore": "שחזור רכישות", "shop_restored": "הרכישות שוחזרו",
               "settings_reset_continue": "להמשיך",
               "settings_reset_confirm2_title": "בטוחים?",
               "settings_reset_confirm2_body": "זה מוחק את הבריכה, הכוכבים והמטבעות שלכם. אי אפשר לבטל.",
-              "settings_reset_confirm2_yes": "למחוק הכול"
+              "settings_reset_confirm2_yes": "למחוק הכול",
+              "home_first_clear": "הבריכה הראשונה היום"
         ],
         .ar: ["shop_restore": "استعادة المشتريات", "shop_restored": "تمت استعادة المشتريات",
               "settings_reset_continue": "متابعة",
               "settings_reset_confirm2_title": "هل أنت متأكد؟",
               "settings_reset_confirm2_body": "سيمحو هذا بركتك ونجومك وعملاتك. لا يمكن التراجع.",
-              "settings_reset_confirm2_yes": "امحُ كل شيء"
+              "settings_reset_confirm2_yes": "امحُ كل شيء",
+              "home_first_clear": "أول بركة اليوم"
         ],
         .hi: ["shop_restore": "खरीदारी बहाल करें", "shop_restored": "खरीदारी बहाल हो गई",
               "settings_reset_continue": "जारी रखें",
               "settings_reset_confirm2_title": "क्या आप निश्चित हैं?",
               "settings_reset_confirm2_body": "इससे आपका तालाब, सितारे और सिक्के मिट जाएंगे। इसे पलटा नहीं जा सकता।",
-              "settings_reset_confirm2_yes": "सब कुछ मिटाएँ"
+              "settings_reset_confirm2_yes": "सब कुछ मिटाएँ",
+              "home_first_clear": "आज का पहला तालाब"
         ],
         .zh: ["shop_restore": "恢复购买", "shop_restored": "已恢复购买",
               "settings_reset_continue": "继续",
               "settings_reset_confirm2_title": "确定吗？",
               "settings_reset_confirm2_body": "这会清空你的池塘、星星和金币，并且无法撤销。",
-              "settings_reset_confirm2_yes": "全部清空"
+              "settings_reset_confirm2_yes": "全部清空",
+              "home_first_clear": "今天第一个池塘"
         ],
         .ja: ["shop_restore": "購入を復元", "shop_restored": "購入を復元しました",
               "settings_reset_continue": "続ける",
               "settings_reset_confirm2_title": "本当によろしいですか？",
               "settings_reset_confirm2_body": "池も星もコインも消えます。元には戻せません。",
-              "settings_reset_confirm2_yes": "すべて消去"
+              "settings_reset_confirm2_yes": "すべて消去",
+              "home_first_clear": "今日の最初の池"
         ],
         .ko: ["shop_restore": "구매 복원", "shop_restored": "구매가 복원되었습니다",
               "settings_reset_continue": "계속",
               "settings_reset_confirm2_title": "정말 초기화할까요?",
               "settings_reset_confirm2_body": "연못과 별, 코인이 모두 지워집니다. 되돌릴 수 없습니다.",
-              "settings_reset_confirm2_yes": "전부 지우기"
+              "settings_reset_confirm2_yes": "전부 지우기",
+              "home_first_clear": "오늘의 첫 연못"
         ],
     ]
 

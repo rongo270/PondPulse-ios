@@ -160,6 +160,11 @@ struct HomeView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     StarsPill(earned: earned, total: total)
+                    // The balance the whole shop runs on. It was on every other
+                    // screen and missing from the one every session starts on,
+                    // which made coins something you only remembered once you
+                    // were already in the shop.
+                    CoinChip(coins: vm.coins) { vm.navigate(.shop) }
                     Spacer()
                     RoundIconButton(systemName: "questionmark") { showRules = true }
                         .accessibilityLabel(strings["home_how_to_play"])
@@ -226,6 +231,37 @@ struct HomeView: View {
                     }
                 }
 
+                // What happened while you were away, in one line: the daily
+                // waiting (and the streak riding on it), the day's first-clear
+                // bonus still unclaimed, or how much of today's quest board is
+                // left. Everything here is otherwise two taps deep, which is
+                // two taps past the moment a player decides whether to play.
+                if let status = todayLine {
+                    Button { vm.navigate(status.destination) } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: status.icon)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(status.done ? palette.textSecondary : palette.accent)
+                            Text(status.text)
+                                .font(.game(12, .semibold))
+                                .foregroundStyle(palette.textSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            if let detail = status.detail {
+                                Text(detail)
+                                    .font(.game(12, .bold))
+                                    .foregroundStyle(status.done ? palette.textSecondary : palette.accent)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(palette.surface.opacity(0.75), in: Capsule())
+                    }
+                    .buttonStyle(SquishyButtonStyle())
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
+                }
+
                 // Five destinations across one row left every tile about 56pt
                 // wide with a hairline between them - cramped on a big phone and
                 // worse on a small one. Three and then two gives each tile
@@ -257,18 +293,16 @@ struct HomeView: View {
                         subLabel: pondOpen ? nil : strings["home_pond_locked", pondMinFriends],
                         locked: !pondOpen
                     ) { vm.navigate(pondOpen ? .pond : .shop) }
-                    // The badge shelf. It carries how many are earned rather
-                    // than sitting there unlabelled: a tile that says 14/24 is
-                    // a reason to open it, and one that says only "Badges" is
-                    // furniture.
+                    // Today's quest board, not the badge shelf behind it. The
+                    // tile used to carry earned milestones - 2/70 - which is a
+                    // number that moves a few times a month and reads as a wall
+                    // on the first morning. The board it opens onto is three
+                    // quests that reset every night, and that is the number
+                    // worth a glance from the menu.
                     MenuTile(
                         systemName: "trophy.fill",
                         label: strings["home_achievements"],
-                        subLabel: strings[
-                            "home_stars_short",
-                            Achievements.earnedCount(vm.achievements),
-                            Achievements.totalRungs
-                        ]
+                        subLabel: strings["home_stars_short", vm.questsDoneToday, vm.questBoard.count]
                     ) { vm.navigate(.quests) }
                     MenuTile(systemName: "bag.fill", label: strings["home_shop"]) { vm.navigate(.shop) }
                 }
@@ -291,6 +325,56 @@ struct HomeView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showRules)
+    }
+
+    /// One line about today, in the order a player would ask the questions.
+    ///
+    /// Every string here already existed for the full-width Daily card the menu
+    /// replaced, so sixteen languages already have them.
+    private var todayLine: TodayLine? {
+        let streak = vm.dailyStreak
+        if !vm.dailyDoneToday {
+            return TodayLine(
+                icon: "flame.fill",
+                text: streak > 0 ? strings["daily_home_keep", streak] : strings["daily_home_new"],
+                destination: .daily
+            )
+        }
+        if !vm.firstClearClaimedToday {
+            return TodayLine(
+                icon: "drop.fill",
+                text: strings["home_first_clear"],
+                detail: "+\(CoinBank.firstClearBonus)",
+                destination: .packs
+            )
+        }
+        let done = vm.questsDoneToday
+        let total = vm.questBoard.count
+        if done < total {
+            return TodayLine(
+                icon: "trophy.fill",
+                text: strings["quests_today"],
+                detail: strings["home_stars_short", done, total],
+                destination: .quests
+            )
+        }
+        return TodayLine(
+            icon: "checkmark.circle.fill",
+            text: streak > 0 ? strings["daily_home_done", streak] : strings["daily_home_done_zero"],
+            destination: .quests,
+            done: true
+        )
+    }
+
+    /// The line's four possible shapes, so the view draws one thing.
+    private struct TodayLine {
+        let icon: String
+        let text: String
+        var detail: String?
+        let destination: Screen
+        /// Nothing left to do today: the line stays, quietly, rather than
+        /// vanishing and leaving the menu jumping about between days.
+        var done = false
     }
 
     private var appVersion: String {
@@ -339,6 +423,10 @@ private struct StarsPill: View {
             Text(strings["home_stars_short", earned, total])
                 .font(.game(14, .bold))
                 .foregroundStyle(palette.textPrimary)
+                // One line at every text size: at the largest, "0/1440" wrapped
+                // inside its own capsule and pushed the whole header down.
+                .lineLimit(1)
+                .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

@@ -138,6 +138,10 @@ struct ProgressStore {
         static func questCount(_ counter: Quests.Counter) -> String { "quest_\(counter.rawValue)" }
         static let questGames = "quest_games"
         static let questPaid = "quest_paid"
+        /// The last day the first-clear bonus was paid, so it pays once a day
+        /// and cannot be farmed by re-clearing a pond you already own.
+        static let firstClearDay = "first_clear_day"
+
         static let coinsGranted = "coins_granted"
         static let coinsSpent = "coins_spent"
 
@@ -266,6 +270,9 @@ struct ProgressStore {
 
     /// The money-bought half of `coinsGranted`; what a reset leaves behind.
     var coinsBought: Int { defaults.integer(forKey: Keys.coinsBought) }
+
+    /// Epoch day the first-clear bonus was last paid, or -1 if it never was.
+    var firstClearDay: Int { defaults.object(forKey: Keys.firstClearDay) as? Int ?? -1 }
 
     /// Coins spent, as a lifetime total.
     var coinsSpent: Int { defaults.integer(forKey: Keys.coinsSpent) }
@@ -718,6 +725,20 @@ struct ProgressStore {
         defaults.set(total, forKey: Keys.coinsBought)
     }
 
+    /// Pays the day's first cleared pond, and returns what it paid - which is
+    /// nothing at all on a day that has already been paid.
+    ///
+    /// Stamped before the coins are granted, in the same hop of the main actor,
+    /// so a second clear arriving in the same breath finds the day already
+    /// spoken for.
+    @discardableResult
+    func claimFirstClear(day: Int) -> Int {
+        guard firstClearDay != day else { return 0 }
+        defaults.set(day, forKey: Keys.firstClearDay)
+        grantCoins(CoinBank.firstClearBonus)
+        return CoinBank.firstClearBonus
+    }
+
     /// Pays a mini game out against the week's ceiling and returns what it
     /// actually paid, which may be less than `want` and may be nothing at all.
     ///
@@ -818,6 +839,7 @@ struct ProgressStore {
         // is the one thing a reset must not be able to do.
         defaults.set(coinsBought, forKey: Keys.coinsGranted)
         defaults.removeObject(forKey: Keys.coinsSpent)
+        defaults.removeObject(forKey: Keys.firstClearDay)
         defaults.removeObject(forKey: Keys.pondWeek)
         defaults.removeObject(forKey: Keys.pondWeekEarned)
 

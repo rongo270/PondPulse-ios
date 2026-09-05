@@ -736,8 +736,9 @@ struct DecorateView: View {
     private static let chipSpacing: CGFloat = 8
     private static let shelfInset: CGFloat = 14
 
-    /// Name and price under the art, plus the gaps around them.
-    private static let chipCaption: CGFloat = 40
+    /// Name and price under the art, plus the gaps around them. Scaled with the
+    /// text it has to hold, for the same reason the shelf is measured at all.
+    private static var chipCaption: CGFloat { scaledGameSize(40) }
 
     private static func chipColumns(in width: CGFloat) -> Int {
         let usable = max(width - shelfInset * 2, chipMinimum)

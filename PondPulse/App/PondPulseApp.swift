@@ -39,6 +39,14 @@ struct RootView: View {
         // Dark palettes get light status-bar icons and dark system sheets, and
         // vice versa - the iOS take on Android's enableEdgeToEdge switch.
         .preferredColorScheme(palette.isDark ? .dark : .light)
+        // Type scales with the phone's text setting - see `Font.game` - and
+        // stops here. Past `accessibility1` a game HUD stops being a HUD: the
+        // splash counter, the menu tiles and the shop's prices are all boxes
+        // built around their own labels. The scale inside `Font.game` caps
+        // before this does; this is the belt to that pair of braces, and it is
+        // also what keeps the *unscaled* system controls - the alerts, the
+        // language picker - inside the same range.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     @ViewBuilder

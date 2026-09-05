@@ -90,7 +90,7 @@ struct DailyView: View {
                 .padding(.bottom, 14)
             }
             .padding(.horizontal, 16)
-            .pondContentWidth(560)
+            .pondContentWidth(560, regular: 760)
 
             if state.won {
                 WinCelebration(skinId: vm.skinId)

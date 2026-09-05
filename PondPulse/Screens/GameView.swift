@@ -184,7 +184,7 @@ struct GameView: View {
                 .padding(.bottom, 14)
             }
             .padding(.horizontal, 16)
-            .pondContentWidth(560)
+            .pondContentWidth(560, regular: 760)
 
             // Win sequence: a heartbeat of confetti and a spinning duck, then the card.
             if state.won {

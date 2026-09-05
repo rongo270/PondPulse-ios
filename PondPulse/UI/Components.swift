@@ -11,9 +11,37 @@ import SwiftUI
 
 extension Font {
     /// The game's voice: SF Rounded, used for every label in the app.
+    ///
+    /// The size given is the size at the system's default text setting, and it
+    /// grows from there with whatever the player has chosen - up to
+    /// `gameTypeCeiling`. It used to be a flat point size, which meant the whole
+    /// app rendered identically at every accessibility text size: a player who
+    /// had turned text up got nothing at all.
+    ///
+    /// Capped rather than uncapped because this is a game rather than a
+    /// document. The board, the tiles, the splash counter and the win card are
+    /// all fixed-height chrome sized around their labels, and text that trebles
+    /// pushes numbers out of them. A third larger is the range that covers the
+    /// non-accessibility sizes - which is where nearly everyone who changes the
+    /// setting at all actually is - and the `dynamicTypeSize` clamp at the root
+    /// stops the accessibility sizes going further.
     static func game(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        .system(size: scaledGameSize(size), weight: weight, design: .rounded)
     }
+}
+
+/// Most the app's type will grow, whatever the phone is set to.
+let gameTypeCeiling: CGFloat = 1.35
+
+/// One point size, scaled for the reader.
+///
+/// `UIFontMetrics` rather than a text style, because a text style would also
+/// *replace* every base size with Apple's nearest one - .subheadline for a 14pt
+/// label, .callout for a 16pt one - and quietly redraw the whole app a point or
+/// two off the sizes every screen was laid out against.
+func scaledGameSize(_ size: CGFloat) -> CGFloat {
+    let scaled = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+    return min(max(scaled, size), size * gameTypeCeiling)
 }
 
 /// Game-feel press: the control squishes down and springs back.
@@ -345,7 +373,23 @@ enum Haptics {
 extension View {
     /// Caps a screen's content at phone-ish width and centers it, so iPads
     /// don't stretch the phone layout edge to edge.
-    func pondContentWidth(_ maxWidth: CGFloat = 520) -> some View {
-        frame(maxWidth: maxWidth)
+    /// Caps a screen's content so a phone layout is not stretched across a
+    /// tablet. `regular` is what the same screen may grow to where there is
+    /// room - a puzzle board reads better big, while a column of settings rows
+    /// does not, so only the screens that want it pass one.
+    func pondContentWidth(_ maxWidth: CGFloat = 520, regular: CGFloat? = nil) -> some View {
+        modifier(PondContentWidth(compact: maxWidth, regular: regular ?? maxWidth))
+    }
+}
+
+
+/// The width cap, by size class.
+private struct PondContentWidth: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    let compact: CGFloat
+    let regular: CGFloat
+
+    func body(content: Content) -> some View {
+        content.frame(maxWidth: sizeClass == .regular ? regular : compact)
     }
 }

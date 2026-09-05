@@ -51,6 +51,10 @@ struct CoinChip: View {
                 .font(.game(14, .bold))
                 .foregroundStyle(palette.textPrimary)
                 .contentTransition(.numericText())
+                // A balance never wraps: it shares the top bar with a title on
+                // most screens and with the star count on the home screen.
+                .lineLimit(1)
+                .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
