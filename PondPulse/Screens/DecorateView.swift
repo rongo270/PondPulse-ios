@@ -30,14 +30,17 @@
 
 import SwiftUI
 
-/// The six things the tray can be showing.
+/// The five things the tray can be showing.
 ///
 /// It was one row of decorations and a Sky tab, which was fine for sixteen
 /// things and is not fine for thirty plus twelve surfaces - a single scrolling
-/// strip of forty-two chips is a strip nobody reaches the end of. The pond is
-/// six separate decisions, so it is six tabs, each with an SF Symbol.
+/// strip of forty-two chips is a strip nobody reaches the end of. Arranging the
+/// pond is five separate decisions, so it is five tabs, each with an SF Symbol.
+/// Which saved pond you are in was a sixth, and it is not here: saving and
+/// switching whole ponds is My Pond's own Layouts panel, one screen up, because
+/// it is a thing you do *to* the pond rather than a thing you arrange in it.
 private enum DecorTab: String, Hashable, CaseIterable, Identifiable {
-    case decor, water, shore, sky, friends, layouts
+    case decor, water, shore, sky, friends
 
     var id: String { rawValue }
 
@@ -48,7 +51,6 @@ private enum DecorTab: String, Hashable, CaseIterable, Identifiable {
         case .shore: return "pond_section_shore"
         case .sky: return "pond_section_sky"
         case .friends: return "pond_section_friends"
-        case .layouts: return "pond_section_layouts"
         }
     }
 
@@ -59,7 +61,6 @@ private enum DecorTab: String, Hashable, CaseIterable, Identifiable {
         case .shore: return "mountain.2.fill"
         case .sky: return "cloud.sun.fill"
         case .friends: return "pawprint.fill"
-        case .layouts: return "square.grid.2x2.fill"
         }
     }
 }
@@ -143,12 +144,6 @@ struct DecorateView: View {
     /// one number on the chip a player is shopping by.
     @State private var shelfWidth: CGFloat = 0
 
-    /// The undo stack. Session-only and deliberately so: it is a safety net for
-    /// the arrangement being made right now, not a version history.
-    ///
-    /// Buying is not on it: coins have changed hands, and an undo that quietly
-    /// refunded a purchase would be a second, silent economy.
-    @State private var undo: [UndoStep] = []
     @State private var selected: String?
     /// The string key of whatever the tray is currently saying, if anything.
     @State private var notice: String?
@@ -461,100 +456,11 @@ struct DecorateView: View {
         }
     }
 
-    // MARK: Saved ponds
-
-    /// The three saved ponds.
-    ///
-    /// Each thumbnail is the whole pond it holds - its own water, bank, sky and
-    /// every decoration where it was left - rather than a slot number, because
-    /// three numbered boxes tell you nothing about which one is the winter pond.
-    private var layoutStrip: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(strings["layout_hint"])
-                .font(.game(12))
-                .foregroundStyle(palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(Array(vm.pondLayouts.enumerated()), id: \.offset) { slot, layout in
-                        VStack(spacing: 4) {
-                            ZStack {
-                                if layout.isEmpty {
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(palette.background)
-                                    Text(strings["layout_empty"])
-                                        .font(.game(11))
-                                        .foregroundStyle(palette.textSecondary)
-                                } else {
-                                    LayoutThumb(layout: layout)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                }
-                            }
-                            .frame(height: 66)
-                            Text(strings["layout_slot", slot + 1])
-                                .font(.game(11, .bold))
-                                .foregroundStyle(palette.textPrimary)
-                            HStack(spacing: 4) {
-                                LayoutAction(text: strings["layout_save"], primary: true) {
-                                    vm.savePondLayout(slot, onPond: placedDecor())
-                                    notice = "decorate_placed"
-                                }
-                                if !layout.isEmpty {
-                                    LayoutAction(text: strings["layout_load"], primary: false) {
-                                        // Snapshot first: switching replaces the
-                                        // whole pond, and it is the only tap here
-                                        // that could lose an afternoon's work.
-                                        undo.append(.whole(currentPond()))
-                                        vm.applyPondLayout(slot)
-                                    }
-                                }
-                            }
-                            if !layout.isEmpty {
-                                Button(strings["layout_clear"]) { vm.clearPondLayout(slot) }
-                                    .font(.game(11))
-                                    .foregroundStyle(palette.textSecondary)
-                            }
-                        }
-                        .frame(width: 132)
-                        .padding(8)
-                        .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                }
-                .padding(.horizontal, 14)
-            }
-        }
-    }
-
-    /// Where everything currently on the pond is standing.
-    private func placedDecor() -> [String: CGPoint] {
-        var out: [String: CGPoint] = [:]
-        for item in PondCatalog.decor where vm.isDecorOwned(item) && !vm.decorStored.contains(item.id) {
-            out[item.id] = vm.decorSpots[item.id] ?? item.at
-        }
-        return out
-    }
-
-    /// The pond exactly as it stands, for the undo snapshot before a switch.
-    private func currentPond() -> PondLayout {
-        PondLayout(
-            weather: vm.pondWeather,
-            water: vm.pondWater,
-            shore: vm.pondShore,
-            friends: vm.pondFriends,
-            stored: vm.decorStored,
-            spots: Dictionary(uniqueKeysWithValues: PondCatalog.decor.map {
-                ($0.id, vm.decorSpots[$0.id] ?? $0.at)
-            }),
-            inPond: Set(placedDecor().keys)
-        )
-    }
-
     // MARK: The tray
 
     private var tray: some View {
         VStack(spacing: 0) {
-            // Six tabs do not fit across a small phone, so the row scrolls
+            // Five tabs do not fit across a small phone, so the row scrolls
             // rather than shrinking the labels to nothing.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -620,9 +526,6 @@ struct DecorateView: View {
 
             case .friends:
                 castStrip
-
-            case .layouts:
-                layoutStrip
             }
         }
         .padding(.bottom, 12)
@@ -1072,18 +975,6 @@ private struct SkyChip: View {
 }
 
 
-/// One reversible thing the player did.
-enum UndoStep {
-    case move(String, CGPoint)
-    case stored(String, Bool)
-    case sky(String)
-    case water(String)
-    case shore(String)
-    case cast([String])
-    /// The whole pond, snapshotted before a layout switch replaced it.
-    case whole(PondLayout)
-}
-
 /// A surface chip: a live slice of the pond, its name, and its price.
 private struct SurfaceChip<Swatch: View>: View {
     @Environment(\.palette) private var palette
@@ -1127,55 +1018,3 @@ private struct SurfaceChip<Swatch: View>: View {
     }
 }
 
-/// A saved pond, small.
-///
-/// Drawn from the layout rather than from what is on screen, and it draws every
-/// decoration the layout placed - including any the player has since sold off.
-/// The thumbnail's job is to say which pond this slot holds, and quietly
-/// dropping half its furniture would make two saved ponds look identical.
-private struct LayoutThumb: View {
-    let layout: PondLayout
-    @Environment(\.palette) private var palette
-
-    var body: some View {
-        Canvas { ctx, size in
-            drawPondBasin(&ctx, weatherId: layout.weather, size: size, palette: palette,
-                          time: 0.4, waterId: layout.water, shoreId: layout.shore)
-            let shown = PondCatalog.decor
-                .filter { layout.drawable.contains($0.id) && !layout.stored.contains($0.id) }
-                .sorted { (layout.spots[$0.id] ?? $0.at).y < (layout.spots[$1.id] ?? $1.at).y }
-            for item in shown {
-                let at = layout.spots[item.id] ?? item.at
-                let side = size.width * item.scale
-                drawDecor(
-                    &ctx, id: item.id,
-                    rect: CGRect(x: size.width * at.x - side / 2, y: size.height * at.y - side / 2,
-                                 width: side, height: side),
-                    palette: palette, phase: 0.4
-                )
-            }
-            drawWeather(&ctx, id: layout.weather, size: size, palette: palette, time: 0.4)
-        }
-    }
-}
-
-private struct LayoutAction: View {
-    @Environment(\.palette) private var palette
-    let text: String
-    let primary: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            Text(text)
-                .font(.game(11, .bold))
-                .foregroundStyle(primary ? PondPalette.onAccent : palette.textSecondary)
-                .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(primary ? palette.accent : palette.background,
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(SquishyButtonStyle())
-    }
-}

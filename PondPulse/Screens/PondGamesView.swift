@@ -692,7 +692,9 @@ private struct DucklingRoundUpView: View {
 
             drawPondWater(&ctx, weatherId: "day", size: size, palette: palette, time: time)
 
-            let padSide = w * herdPadSide
+            // Twice the catch radius, so a pad that has grown harder to hit is
+            // visibly the smaller pad it has become.
+            let padSide = w * engine.dock * 2
             for (index, pad) in engine.pads.enumerated() {
                 let taken = engine.ducks.contains { $0.homePad == index }
                 let x = pad.x * w
@@ -713,7 +715,7 @@ private struct DucklingRoundUpView: View {
                 )
             }
 
-            let side = w * 0.14
+            let side = padSide * 0.93
             for duck in engine.ducks {
                 let bob = duck.homePad >= 0 ? 0 : sin(time * 1.8 + duck.pos.x * 9) * h * 0.004
                 let x = duck.pos.x * w
@@ -760,28 +762,60 @@ private enum HerdPhase {
     case playing, cleared, stranded
 }
 
-/// Ducklings adrift in `round` (0-based). Caps at five: past that it is soup.
+/// Ducklings adrift in `round` (0-based). Caps at seven: past that it is soup.
 func herdDucks(_ round: Int) -> Int { min(2 + round / 2, herdMaxDucks) }
 
 /// Splashes the round allows.
 ///
-/// Three a duckling plus two to spare, minus one every other round, and never
-/// below two a duckling. The floor is what stops the ramp from turning a solvable
-/// board into an unsolvable one - past a point the round stops getting meaner and
-/// only gets bigger.
+/// Six over the duckling count while the game is still teaching itself, then one
+/// fewer every round from `herdBite` on, and never below one a duckling plus a
+/// spare. The floor is what stops the ramp from turning a solvable board into an
+/// unsolvable one - past a point the round stops getting meaner and only gets
+/// bigger.
+///
+/// It used to bottom out at *two* splashes a duckling, which a player who can
+/// aim never needs: from round 14 on every round was the same round, and the
+/// game stopped asking anything.
 func herdSplashes(_ round: Int) -> Int {
     let ducks = herdDucks(round)
-    return max(ducks * 3 + 2 - round / 2, ducks * 2)
+    return max(ducks + 6 - herdBiteAt(round), ducks + 1)
 }
 
-private let herdMaxDucks = 5
-private let herdPadSide: CGFloat = 0.15
+/// How far past the ramp's turn `round` is, in rounds. Zero until `herdBite`.
+///
+/// The first five rounds are the game explaining itself - two, three and four
+/// ducklings with splashes to spare - and everything that tightens reads off
+/// this, so they all start biting at the same place.
+private func herdBiteAt(_ round: Int) -> Int { max(round - herdBite, 0) }
+
+/// How near a pad a duckling has to pass to be caught by it, in width fractions.
+///
+/// Shrinks with the ramp, and the pad is drawn at exactly twice it, so the pad
+/// you can see *is* the pad that catches - a target that quietly stopped
+/// matching its own picture would read as the game cheating.
+func herdDock(_ round: Int) -> CGFloat {
+    max(herdDockRange - 0.002 * CGFloat(herdBiteAt(round)), herdDockMin)
+}
+
+/// Water drag per second in `round`. Lower than the pond's, so a shove carries -
+/// but it climbs with the ramp, so a wild shove at the far end of a late round
+/// dies before it reaches anything and the splash is simply gone.
+func herdDrag(_ round: Int) -> CGFloat {
+    min(herdFriction + 0.05 * CGFloat(herdBiteAt(round)), herdDragMax)
+}
+
+private let herdMaxDucks = 7
+
+/// The round the ramp starts biting on: everything before it is the tutorial.
+private let herdBite = 4
 
 /// Within this, in width fractions, a duckling is on the pad and is home.
 private let herdDockRange: CGFloat = 0.075
+private let herdDockMin: CGFloat = 0.055
 
 /// Water drag per second. Lower than the pond's, so a shove carries further.
 private let herdFriction: CGFloat = 1.6
+private let herdDragMax: CGFloat = 2.0
 
 /// Below this speed nothing is going to reach anything: the round can be judged.
 private let herdStill: CGFloat = 0.012
@@ -823,6 +857,10 @@ private final class HerdEngine: GameEngine {
 
     var duckCount: Int { herdDucks(round) }
 
+    /// This round's catch radius and water drag, both set by `resetRound`.
+    private(set) var dock = herdDockRange
+    private(set) var drag = herdFriction
+
     init(cast: [String]) {
         self.cast = cast.isEmpty ? ["classic"] : cast
         super.init()
@@ -837,13 +875,19 @@ private final class HerdEngine: GameEngine {
         splashesLeft = herdSplashes(round)
         phase = .playing
         phaseAt = -1
+        dock = herdDock(round)
+        drag = herdDrag(round)
+        // Seven pads and seven ducklings will not sit a third of the board
+        // apart, and forty tries that all fail leave everything bunched in
+        // whatever corner was roomiest. A fuller board asks for less room.
+        let padGap: CGFloat = duckCount <= 5 ? 0.30 : 0.22
         // Pads first, then ducklings placed clear of them: a duckling that
         // starts on a pad is a point the player was given, not one they took.
         for _ in 0..<duckCount {
-            pads.append(scatter(taken: pads, apart: 0.30))
+            pads.append(scatter(taken: pads, apart: padGap))
         }
         for index in 0..<duckCount {
-            let at = scatter(taken: pads + ducks.map(\.pos), apart: 0.26)
+            let at = scatter(taken: pads + ducks.map(\.pos), apart: padGap * 0.87)
             ducks.append(HerdDuck(skinId: cast[index % cast.count], pos: at))
         }
     }
@@ -926,7 +970,7 @@ private final class HerdEngine: GameEngine {
                 }
             }
 
-            let keep = min(max(1 - herdFriction * dt, 0), 1)
+            let keep = min(max(1 - drag * dt, 0), 1)
             duck.vel.dx *= keep
             duck.vel.dy *= keep
             var p = CGPoint(x: duck.pos.x + duck.vel.dx * dt, y: duck.pos.y + duck.vel.dy * dt)
@@ -939,7 +983,7 @@ private final class HerdEngine: GameEngine {
             duck.pos = p
 
             if let free = pads.indices.first(where: { index in
-                !ducks.contains { $0.homePad == index } && span(p, pads[index], aspect) < herdDockRange
+                !ducks.contains { $0.homePad == index } && span(p, pads[index], aspect) < dock
             }) {
                 duck.homePad = free
                 duck.pos = pads[free]
@@ -1021,11 +1065,16 @@ private struct HideAndSeekView: View {
 
             // The dive that starts the shuffle, so the friend is seen to go
             // under a pad rather than simply stopping being drawn.
-            if engine.divedAt > 0 && time - engine.divedAt < 0.9 {
+            //
+            // Drawn where the friend went in, never where the pad hiding it has
+            // since got to: read off `xOf[hidden]` the rings followed the right
+            // pad through the first swaps, which told the player the answer
+            // without them having to follow anything.
+            if engine.divedAt > 0 && time - engine.divedAt < seekDiveLife {
                 drawSplashRings(
                     &ctx,
-                    at: CGPoint(x: engine.xOf[engine.hidden] * w, y: cy),
-                    progress: min(max((time - engine.divedAt) / 0.9, 0), 1),
+                    at: CGPoint(x: engine.divedX * w, y: cy),
+                    progress: min(max((time - engine.divedAt) / seekDiveLife, 0), 1),
                     size: size, palette: palette
                 )
             }
@@ -1088,6 +1137,9 @@ private enum SeekPhase {
 }
 
 private let seekShowSeconds: CGFloat = 1.1
+
+/// How long the dive's rings last - and how long the shuffle waits for them.
+private let seekDiveLife: CGFloat = 0.6
 private let seekBaseSwaps = 3
 private let seekRowY: CGFloat = 0.46
 
@@ -1111,7 +1163,10 @@ private final class SeekEngine: GameEngine {
     private var arcOf: [CGFloat] = []
 
     /// When the friend went under, so the splash can be drawn. -1 until then.
-    var divedAt: CGFloat = -1
+    private(set) var divedAt: CGFloat = -1
+
+    /// And where, pinned: the rings stay in the water the friend entered.
+    private(set) var divedX: CGFloat = 0
 
     private var elapsed: CGFloat = 0
     private var swapsLeft = 0
@@ -1133,11 +1188,17 @@ private final class SeekEngine: GameEngine {
         swimOf = Array(repeating: 0, count: pads)
         arcOf = Array(repeating: 0, count: pads)
         divedAt = -1
+        divedX = 0
         picked = -1
         phase = .showing
         elapsed = 0
         swapsLeft = seekBaseSwaps + round
-        nextSwap = seekShowSeconds
+        // The first swap waits for the dive's rings to clear. Started on the
+        // same frame the friend went under, the shuffle ran *behind* a ripple
+        // that was still on the water - and a ripple sitting over a pad that is
+        // already moving is the answer, drawn on the board for anyone patient
+        // enough to watch it.
+        nextSwap = seekShowSeconds + seekDiveLife
         gap = max(0.46 - CGFloat(round) * 0.02, 0.20)
         revealedAt = -1
     }
@@ -1158,6 +1219,7 @@ private final class SeekEngine: GameEngine {
         if phase == .showing && elapsed >= seekShowSeconds {
             phase = .shuffling
             divedAt = time
+            divedX = xOf[hidden]
         }
         if phase == .shuffling && elapsed >= nextSwap {
             if swapsLeft <= 0 {

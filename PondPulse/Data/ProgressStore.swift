@@ -183,8 +183,11 @@ struct ProgressStore {
         static let pondWater = "pond_water"
         static let pondShore = "pond_shore"
 
-        /// The three saved ponds, one `PondLayout` string each.
+        /// The saved ponds, one `PondLayout` string each.
         static func layout(_ slot: Int) -> String { "pond_layout_\(slot)" }
+
+        /// Saved ponds bought past the free `CoinBank.baseLayouts`.
+        static let layoutSlots = "layout_slots"
 
         static func stars(_ levelId: String) -> String { "stars_\(levelId)" }
         static func rushBest(_ durationSec: Int) -> String { "rush_best_\(durationSec)" }
@@ -322,12 +325,16 @@ struct ProgressStore {
     var pondWater: String { defaults.string(forKey: Keys.pondWater) ?? "clear" }
     var pondShore: String { defaults.string(forKey: Keys.pondShore) ?? "meadow" }
 
-    /// The saved ponds, by slot. A slot nothing was ever saved into decodes to
-    /// an empty `PondLayout` rather than being absent, so the tab can draw three
+    /// Every saved pond, by slot - including the slots not yet unlocked, which
+    /// decode to empty ones. A slot nothing was ever saved into decodes to an
+    /// empty `PondLayout` rather than being absent, so the panel can draw its
     /// thumbnails without asking whether each one exists.
     var pondLayouts: [PondLayout] {
-        (0..<PondCatalog.layoutSlots).map { PondLayout.decode(defaults.string(forKey: Keys.layout($0))) }
+        (0..<CoinBank.maxLayouts).map { PondLayout.decode(defaults.string(forKey: Keys.layout($0))) }
     }
+
+    /// Saved ponds the player has, free ones included.
+    var layoutSlots: Int { CoinBank.baseLayouts + defaults.integer(forKey: Keys.layoutSlots) }
 
     /// Hints remaining; irrelevant for premium owners, who have unlimited.
     var hintsLeft: Int { defaults.object(forKey: Keys.hintsLeft) as? Int ?? Self.freeHints }
@@ -440,6 +447,8 @@ struct ProgressStore {
     func grantPondSlots(_ count: Int) {
         let extra = defaults.integer(forKey: Keys.pondSlots)
         defaults.set(min(extra + max(count, 0), CoinBank.slotPrices.count), forKey: Keys.pondSlots)
+        let layouts = defaults.integer(forKey: Keys.layoutSlots)
+        defaults.set(min(layouts + max(count, 0), CoinBank.layoutPrices.count), forKey: Keys.layoutSlots)
     }
 
     func setPondFriends(_ ids: [String]) {
@@ -787,6 +796,27 @@ struct ProgressStore {
         return true
     }
 
+    /// Buys the next saved pond, the same way `buyPondSlot` buys the next seat.
+    @discardableResult
+    func buyLayoutSlot(derived: Int) -> Bool {
+        let extra = defaults.integer(forKey: Keys.layoutSlots)
+        guard let price = CoinBank.layoutPrice(slots: CoinBank.baseLayouts + extra) else { return false }
+        if !everythingFree {
+            guard let after = CoinBank.spend(
+                derived: derived, granted: coinsGranted, spent: coinsSpent, price: price
+            ) else { return false }
+            defaults.set(after, forKey: Keys.coinsSpent)
+        }
+        defaults.set(extra + 1, forKey: Keys.layoutSlots)
+        return true
+    }
+
+    /// Writes a layout straight into a slot - how Undo reverses a save that
+    /// overwrote one, and a clear that threw one away.
+    func putPondLayout(_ slot: Int, _ layout: PondLayout) {
+        defaults.set(layout.encoded(), forKey: Keys.layout(slot))
+    }
+
     // MARK: - Reset
 
     /// Starts the whole game over, keeping only what was paid for with money.
@@ -866,9 +896,12 @@ struct ProgressStore {
         defaults.removeObject(forKey: Keys.decorStored)
         defaults.removeObject(forKey: Keys.pondWater)
         defaults.removeObject(forKey: Keys.pondShore)
-        // The saved ponds go with the pond they were saved from. Keeping them
-        // would leave a "fresh" save one tap away from the fully decorated pond
-        // the reset was supposed to clear.
-        for slot in 0..<PondCatalog.layoutSlots { clearPondLayout(slot) }
+        // The saved ponds go with the pond they were saved from, and so do the
+        // slots bought for them - they were bought with coins, and the reset
+        // takes back everything coins paid for. Keeping the ponds would leave a
+        // "fresh" save one tap away from the fully decorated pond the reset was
+        // supposed to clear.
+        defaults.removeObject(forKey: Keys.layoutSlots)
+        for slot in 0..<CoinBank.maxLayouts { clearPondLayout(slot) }
     }
 }

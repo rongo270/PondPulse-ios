@@ -144,6 +144,20 @@ enum CoinBank {
 
     static var maxSlots: Int { baseSlots + slotPrices.count }
 
+    /// Each saved pond past the three that are free, in order.
+    ///
+    /// Three is a summer pond, a winter one and one being tinkered with - enough
+    /// that nobody has to buy a fourth to use the feature at all, which is the
+    /// line every price in this file is drawn on. Past that a saved pond is what
+    /// a decorated pond is: the last one costs more than any single decoration,
+    /// because what it holds is all of them at once.
+    static let layoutPrices = [1500, 3000, 5000]
+
+    /// Saved ponds the player has before any are bought.
+    static let baseLayouts = 3
+
+    static var maxLayouts: Int { baseLayouts + layoutPrices.count }
+
     // MARK: - The rules
 
     /// What one campaign pond's stars are worth.
@@ -239,5 +253,12 @@ enum CoinBank {
         let index = slots - baseSlots
         guard index >= 0, index < slotPrices.count else { return nil }
         return slotPrices[index]
+    }
+
+    /// Price of the saved pond after the `slots` the player already has.
+    static func layoutPrice(slots: Int) -> Int? {
+        let index = slots - baseLayouts
+        guard index >= 0, index < layoutPrices.count else { return nil }
+        return layoutPrices[index]
     }
 }

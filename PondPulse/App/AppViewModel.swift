@@ -121,6 +121,7 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var pondShore: String
     @Published private(set) var pondLayouts: [PondLayout]
     @Published private(set) var pondSlots: Int
+    @Published private(set) var layoutSlots: Int
     @Published private(set) var pondFriends: [String]
     @Published private(set) var decorSpots: [String: CGPoint]
     @Published private(set) var decorStored: Set<String>
@@ -170,6 +171,7 @@ final class AppViewModel: ObservableObject {
         pondShore = store.pondShore
         pondLayouts = store.pondLayouts
         pondSlots = store.pondSlots
+        layoutSlots = store.layoutSlots
         pondFriends = store.pondFriends
         decorSpots = store.decorSpots
         decorStored = store.decorStored
@@ -581,6 +583,15 @@ final class AppViewModel: ObservableObject {
         return true
     }
 
+    /// Buys room for one more saved pond.
+    @discardableResult
+    func buyLayoutSlot() -> Bool {
+        guard store.buyLayoutSlot(derived: derivedCoins) else { return false }
+        layoutSlots = store.layoutSlots
+        coinsSpent = store.coinsSpent
+        return true
+    }
+
     // MARK: - The pond
 
     /// Friends owned before the pond is worth opening.
@@ -663,6 +674,12 @@ final class AppViewModel: ObservableObject {
 
     func clearPondLayout(_ slot: Int) {
         store.clearPondLayout(slot)
+        pondLayouts = store.pondLayouts
+    }
+
+    /// Puts a saved pond back into its slot - how Undo reverses a save or a clear.
+    func putPondLayout(_ slot: Int, _ layout: PondLayout) {
+        store.putPondLayout(slot, layout)
         pondLayouts = store.pondLayouts
     }
 
@@ -926,6 +943,7 @@ final class AppViewModel: ObservableObject {
     func testGrantPondSlots(_ count: Int = 2) {
         store.grantPondSlots(count)
         pondSlots = store.pondSlots
+        layoutSlots = store.layoutSlots
     }
 
     /// The pond `delta` steps along the play order from `levelId`, or nil at
@@ -1057,6 +1075,7 @@ final class AppViewModel: ObservableObject {
         pondShore = store.pondShore
         pondLayouts = store.pondLayouts
         pondSlots = store.pondSlots
+        layoutSlots = store.layoutSlots
         pondFriends = store.pondFriends
         decorSpots = store.decorSpots
         decorStored = store.decorStored

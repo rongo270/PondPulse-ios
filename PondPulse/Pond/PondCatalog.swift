@@ -179,10 +179,6 @@ enum PondCatalog {
         Surface("autumn", "shore_autumn", 1800),
     ]
 
-    /// Saved ponds. Three is enough for a summer pond, a winter one and one
-    /// being tinkered with, and few enough that the tab is a row of thumbnails.
-    static let layoutSlots = 3
-
     static func waterById(_ id: String?) -> Surface { waters.first { $0.id == id } ?? waters[0] }
     static func shoreById(_ id: String?) -> Surface { shores.first { $0.id == id } ?? shores[0] }
 

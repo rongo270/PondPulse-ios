@@ -191,7 +191,7 @@ private final class PondMotion {
 // MARK: - The screen
 
 private enum PondPanelKind: Hashable {
-    case none, friends, games, roster
+    case none, friends, games, layouts
 }
 
 struct PondView: View {
@@ -326,8 +326,11 @@ struct PondView: View {
                     ) {
                         panel = .games
                     }
-                    PondAction(icon: "rectangle.grid.2x2.fill", label: strings["pond_roster"]) {
-                        panel = .roster
+                    PondAction(
+                        icon: "rectangle.stack.fill",
+                        label: strings["pond_section_layouts"]
+                    ) {
+                        panel = .layouts
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -340,7 +343,7 @@ struct PondView: View {
                 switch panel {
                 case .friends: FriendsPanel(vm: vm, cast: cast)
                 case .games: GamesPanel(vm: vm) { panel = .none }
-                case .roster: RosterPanel(vm: vm)
+                case .layouts: LayoutsPanel(vm: vm)
                 case .none: EmptyView()
                 }
             }
@@ -577,19 +580,6 @@ struct PanelTitle: View {
     }
 }
 
-struct PanelSection: View {
-    @Environment(\.palette) private var palette
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.game(14, .bold))
-            .foregroundStyle(palette.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 8)
-    }
-}
-
 // MARK: - The panels
 
 /// Who is in the water, and how many may be.
@@ -729,115 +719,301 @@ private struct GamesPanel: View {
     }
 }
 
-/// The whole roster: every friend and pad in the game, with the locked ones
-/// dimmed and labelled with what earns them.
+/// The saved ponds.
 ///
-/// This is what the Collection screen was, kept because it answers "what is
-/// next" - and moved in here because it was only ever half a screen.
-private struct RosterPanel: View {
+/// Each thumbnail is the whole pond it holds - its own water, bank, sky and
+/// every decoration where it was left - rather than a slot number, because three
+/// numbered boxes tell you nothing about which one is the winter pond.
+///
+/// Three are free and the rest are bought a pond at a time
+/// (`CoinBank.layoutPrices`), on the card that would hold them - a locked slot
+/// priced where the pond would be says what the coins are for far better than a
+/// line of text about it would.
+///
+/// It lived in the Decorate tray until now, sharing that screen's undo stack.
+/// Here it carries its own: switching replaces everything at once, and a tap on
+/// the wrong thumbnail with no way back would be the only unrecoverable thing in
+/// the pond. Clearing a slot is undoable for the same reason - what it throws
+/// away is an afternoon's arranging that is not on screen to be re-made from.
+private struct LayoutsPanel: View {
     @ObservedObject var vm: AppViewModel
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
 
+    @State private var notice: String?
+    @State private var noticeArg = 0
+    @State private var said = 0
+
+    /// How to put back whatever the last tap replaced, or nil once there is
+    /// nothing to put back. One step deep and cleared with the message it
+    /// belongs to: it is the way out of a mis-tap, not a history of the pond.
+    @State private var undo: (() -> Void)?
+
+    /// The slot a Clear is waiting on, or nil when nothing is being asked.
+    ///
+    /// Clearing is the one tap here that throws a pond away rather than
+    /// replacing it, and the Undo underneath it lasts a few seconds and is
+    /// gone. So it asks first - and the question says which pond, because
+    /// three thumbnails a thumb's width apart is exactly where the wrong one
+    /// gets hit.
+    @State private var confirmClear: Int?
+
     var body: some View {
-        let ownedSkins = Catalog.skins.count { vm.isOwned($0.unlock, productId: Catalog.skinProductId($0.id)) }
-        let ownedPads = Catalog.pads.count { vm.isOwned($0.unlock, productId: Catalog.padProductId($0.id)) }
+        let slots = vm.layoutSlots
+        let price = CoinBank.layoutPrice(slots: slots)
 
         VStack(spacing: 0) {
             PanelTitle(
-                text: strings["pond_roster"],
-                subtitle: strings["collection_tally", ownedSkins, Catalog.skins.count, ownedPads, Catalog.pads.count]
+                text: strings["pond_section_layouts"],
+                subtitle: notice.map { strings[$0, noticeArg] } ?? strings["layout_hint"],
+                emphasis: notice != nil
             )
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    // Seventy-three friends in one unbroken grid says nothing
-                    // about how any of them is got. Cut along the same ladder
-                    // the shop's shelf uses, so the two screens describe the
-                    // collection the same way.
-                    ForEach(friendGroups(), id: \.titleKey) { group in
-                        if !group.skins.isEmpty {
-                            PanelSection(text: strings[group.titleKey])
-                            tileRows(group.skins.map(\.id)) { id in
-                                let skin = Catalog.skinById(id)
-                                let can = vm.isOwned(skin.unlock, productId: Catalog.skinProductId(skin.id))
-                                RosterTile(
-                                    name: strings[skin.nameKey],
-                                    lockLabel: can ? nil : lockLabel(skin.unlock, strings),
-                                    selected: skin.id == vm.skinId,
-                                    onTap: { if can { vm.selectSkin(skin.id) } }
-                                ) { SkinPreview(skinId: skin.id).aspectRatio(1, contentMode: .fit) }
-                            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(0..<min(slots, vm.pondLayouts.count), id: \.self) { slot in
+                        slotCard(slot, vm.pondLayouts[slot])
+                    }
+                    if let price {
+                        buyCard(slots, price)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+            // The way back from the one tap that can lose an afternoon. Shown
+            // only while there is something to undo, at the foot of the panel
+            // rather than on a card, because what it undoes is the whole pond.
+            if let undo {
+                Button(strings["undo"]) {
+                    undo()
+                    notice = nil
+                    self.undo = nil
+                }
+                .font(.game(15, .bold))
+                .foregroundStyle(palette.accent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            Spacer().frame(height: 12)
+        }
+        .alert(
+            strings["layout_clear_ask", (confirmClear ?? 0) + 1],
+            isPresented: Binding(
+                get: { confirmClear != nil },
+                set: { if !$0 { confirmClear = nil } }
+            )
+        ) {
+            Button(strings["layout_clear"], role: .destructive) {
+                guard let slot = confirmClear else { return }
+                let gone = vm.pondLayouts[slot]
+                confirmClear = nil
+                vm.clearPondLayout(slot)
+                say("layout_cleared", slot + 1) { vm.putPondLayout(slot, gone) }
+            }
+            Button(strings["shop_cancel"], role: .cancel) { confirmClear = nil }
+        } message: {
+            Text(strings["layout_clear_body"])
+        }
+        .task(id: said) {
+            guard notice != nil else { return }
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            notice = nil
+            undo = nil
+        }
+    }
+
+    private func say(_ key: String, _ arg: Int, back: (() -> Void)? = nil) {
+        notice = key
+        noticeArg = arg
+        undo = back
+        said += 1
+    }
+
+    @ViewBuilder
+    private func slotCard(_ slot: Int, _ layout: PondLayout) -> some View {
+        VStack(spacing: 4) {
+            ZStack {
+                if layout.isEmpty {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(palette.background)
+                    Text(strings["layout_empty"])
+                        .font(.game(11))
+                        .foregroundStyle(palette.textSecondary)
+                } else {
+                    LayoutThumb(layout: layout)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .frame(height: 66)
+            Text(strings["layout_slot", slot + 1])
+                .font(.game(11, .bold))
+                .foregroundStyle(palette.textPrimary)
+            // Stacked rather than side by side: two of these across a 132pt
+            // card clipped "Switch to it" to "Switc" in English, and English is
+            // the short one.
+            VStack(spacing: 4) {
+                LayoutAction(text: strings["layout_save"], primary: true) {
+                    // Saving overwrites whatever the slot held, so it hands back
+                    // the pond it wrote over, not the one it wrote - undoing a
+                    // save must not also undo the arranging that prompted it.
+                    let was = layout
+                    vm.savePondLayout(slot, onPond: placedDecor())
+                    say("layout_saved", slot + 1) {
+                        if was.isEmpty {
+                            vm.clearPondLayout(slot)
+                        } else {
+                            vm.putPondLayout(slot, was)
                         }
                     }
-                    PanelSection(text: strings["shop_section_pads"])
-                    tileRows(Catalog.pads.map(\.id)) { id in
-                        let pad = Catalog.padById(id)
-                        let can = vm.isOwned(pad.unlock, productId: Catalog.padProductId(pad.id))
-                        RosterTile(
-                            name: strings[pad.nameKey],
-                            lockLabel: can ? nil : lockLabel(pad.unlock, strings),
-                            selected: pad.id == vm.padId,
-                            onTap: { if can { vm.selectPad(pad.id) } }
-                        ) { PadPreview(padId: pad.id).aspectRatio(1, contentMode: .fit) }
-                    }
-                    Button(strings["collection_open_shop"]) { vm.navigate(.shop) }
-                        .font(.game(15, .bold))
-                        .foregroundStyle(palette.accent)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                if !layout.isEmpty {
+                    LayoutAction(text: strings["layout_load"], primary: false) {
+                        let before = currentPond()
+                        vm.applyPondLayout(slot)
+                        say("layout_loaded", slot + 1) { vm.restorePond(before) }
+                    }
+                }
             }
-            .frame(maxHeight: 340)
+            if !layout.isEmpty {
+                Button(strings["layout_clear"]) { confirmClear = slot }
+                    .font(.game(11))
+                    .foregroundStyle(palette.textSecondary)
+            }
+        }
+        .frame(width: 132)
+        .padding(8)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// The next pond, priced on the card it would be saved into. Gone once every
+    /// slot is bought, rather than becoming a card that says "sold out" forever.
+    @ViewBuilder
+    private func buyCard(_ slots: Int, _ price: Int) -> some View {
+        VStack(spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(palette.background)
+                Text(strings["layout_buy_desc"])
+                    .font(.game(11))
+                    .foregroundStyle(palette.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 6)
+            }
+            .frame(height: 66)
+            Text(strings["layout_slot", slots + 1])
+                .font(.game(11, .bold))
+                .foregroundStyle(palette.textPrimary)
+            Button {
+                if vm.canAfford(price) {
+                    vm.buyLayoutSlot()
+                    say("layout_bought", slots + 1)
+                } else {
+                    say("decorate_short", 0)
+                }
+            } label: {
+                if FreeMode.enabled {
+                    Text(strings["shop_free_tag"])
+                        .font(.game(11, .bold))
+                        .foregroundStyle(palette.accent)
+                } else {
+                    CoinPrice(price: price, affordable: vm.canAfford(price))
+                }
+            }
+            .buttonStyle(SquishyButtonStyle())
+            .padding(.top, 2)
+        }
+        .frame(width: 132)
+        .padding(8)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// Where everything on the pond is standing, for the layout being saved.
+    private func placedDecor() -> [String: CGPoint] {
+        var out: [String: CGPoint] = [:]
+        for item in PondCatalog.decor where vm.isDecorOwned(item) && !vm.decorStored.contains(item.id) {
+            out[item.id] = vm.decorSpots[item.id] ?? item.at
+        }
+        return out
+    }
+
+    /// The pond exactly as it stands, for the undo snapshot before a switch.
+    private func currentPond() -> PondLayout {
+        PondLayout(
+            weather: vm.pondWeather,
+            water: vm.pondWater,
+            shore: vm.pondShore,
+            friends: vm.pondFriends,
+            stored: vm.decorStored,
+            spots: Dictionary(uniqueKeysWithValues: PondCatalog.decor.map {
+                ($0.id, vm.decorSpots[$0.id] ?? $0.at)
+            }),
+            inPond: Set(placedDecor().keys)
+        )
+    }
+}
+
+/// A saved pond, small.
+///
+/// Drawn from the layout rather than from what is on screen, and it draws every
+/// decoration the layout placed - including any the player has since sold off.
+/// That is deliberate: the thumbnail's job is to say which pond this slot holds,
+/// and quietly dropping half its furniture would make two saved ponds look
+/// identical.
+private struct LayoutThumb: View {
+    let layout: PondLayout
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        Canvas { ctx, size in
+            drawPondBasin(&ctx, weatherId: layout.weather, size: size, palette: palette,
+                          time: 0.4, waterId: layout.water, shoreId: layout.shore)
+            let shown = PondCatalog.decor
+                .filter { layout.drawable.contains($0.id) && !layout.stored.contains($0.id) }
+                .sorted { (layout.spots[$0.id] ?? $0.at).y < (layout.spots[$1.id] ?? $1.at).y }
+            for item in shown {
+                let at = layout.spots[item.id] ?? item.at
+                let side = size.width * item.scale
+                drawDecor(
+                    &ctx, id: item.id,
+                    rect: CGRect(x: size.width * at.x - side / 2,
+                                 y: size.height * at.y - side / 2,
+                                 width: side, height: side),
+                    palette: palette, phase: 0.4
+                )
+            }
+            drawWeather(&ctx, id: layout.weather, size: size, palette: palette, time: 0.4)
         }
     }
 }
 
-/// One heading in the roster, and the friends under it.
-private struct FriendGroup {
-    let titleKey: String
-    let skins: [SkinItem]
-}
+/// One of a saved pond's buttons: save into it, or switch to it.
+private struct LayoutAction: View {
+    @Environment(\.palette) private var palette
+    let text: String
+    let primary: Bool
+    let onTap: () -> Void
 
-/// The roster's sections, in the order the ladder puts them.
-///
-/// The first heading used to be "Earned by playing" and held the level prizes as
-/// well as the free pair. Nothing is pinned to a level number any more, so what
-/// is left under it is what the game opens with, and it says so.
-private func friendGroups() -> [FriendGroup] {
-    func group(_ key: String, _ keep: (Unlock) -> Bool) -> FriendGroup {
-        FriendGroup(titleKey: key, skins: Catalog.skins.filter { keep($0.unlock) })
-    }
-    return [
-        group("friends_section_free", \.isFree),
-        group("friends_section_golden") { $0.rewardBonusPonds != nil },
-        group("friends_section_daily") { $0.rewardStreak != nil },
-        group("friends_section_themes") { $0.themeFriendOf != nil },
-        group("friends_section_coins") { $0.coinPrice != nil },
-        group("friends_section_special", \.isMoney),
-        group("friends_section_premium", \.isPremium),
-    ]
-}
-
-/// What a locked roster square says instead of a price.
-private func lockLabel(_ unlock: Unlock, _ strings: Strings) -> String {
-    switch unlock {
-    case .bonusReward(let count): return strings["bonus_locked_shop", count]
-    case .streakReward(let days): return strings["collection_streak_lock", days]
-    case .premium: return strings["collection_premium_lock"]
-    case .themeFriend(let themeId):
-        let name = Catalog.themes.first { $0.id == themeId }?.nameKey ?? ""
-        return strings["friends_theme_lock", strings[name]]
-    // A special friend falls through to "in the shop" like any other purchase:
-    // the roster has no StoreKit prices to hand, and a hard-coded "$0.99" would
-    // be wrong in every country that does not use dollars.
-    case .money: return strings["collection_shop_lock"]
-    default: return strings["collection_shop_lock"]
+    var body: some View {
+        Button(action: onTap) {
+            Text(text)
+                .font(.game(11, .bold))
+                .foregroundStyle(primary ? PondPalette.onAccent : palette.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 5)
+                .background(
+                    primary ? palette.accent : palette.background,
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+        }
+        .buttonStyle(SquishyButtonStyle())
     }
 }
 
-/// Four to a row, the shape both roster grids use.
+/// Four to a row, the shape the friends picker lays its tiles out in.
 @ViewBuilder
 private func tileRows<Tile: View>(
     _ ids: [String], @ViewBuilder tile: @escaping (String) -> Tile
@@ -855,7 +1031,7 @@ private func tileRows<Tile: View>(
     }
 }
 
-/// One square in a roster or picker grid.
+/// One square in the friends picker: a preview, a name, and whether it is in.
 struct RosterTile<Preview: View>: View {
     @Environment(\.palette) private var palette
     let name: String
