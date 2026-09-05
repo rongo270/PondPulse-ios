@@ -72,12 +72,18 @@ enum CoinBank {
 
     // MARK: - Spending
 
-    /// One hint. The 50-hint pack in the shop stays a real-money product.
-    static let priceHint = 150
+    /// One hint. The hint pack in the shop stays a real-money product.
+    ///
+    /// A bundle of five is 1750 coins - a little over a cheap friend, and about
+    /// a week of quests. Hints are the one thing in the shop that is *spent*
+    /// rather than owned, so they are deliberately dear against the cosmetics:
+    /// a player who can buy their way past every pond has bought their way out
+    /// of the game.
+    static let priceHint = 350
 
     /// Hints sold in one coin purchase. Five rather than one: a shop row you
     /// have to tap seven times is a chore, and the pack above it already exists
-    /// for anyone who wants fifty.
+    /// for anyone who wants more.
     static let hintBundle = 5
 
     /// Three bands for friends, two for pads and two for themes, rather than one
@@ -99,6 +105,27 @@ enum CoinBank {
     /// not a goal, it is a rounding error.
     static let priceSkinLegendary = 6500
     static let pricePadLegendary = 4000
+
+    /// The ladder the campaign's old prizes moved onto, in ascending order.
+    ///
+    /// Twenty-one cosmetics used to arrive simply for reaching a level number,
+    /// which meant a prize every five to ten ponds and a win card that spent
+    /// more of its life handing something over than saying well done. They are
+    /// bought now, and the golden ponds are the only place play alone still
+    /// pays a cosmetic - which is what makes a golden pond worth the detour.
+    ///
+    /// A ladder rather than bands, because these are the one run of items whose
+    /// order already means something: a friend that used to arrive at level 40
+    /// is the cheap end and one that used to arrive at level 300 is the dear
+    /// end, and pricing them flat would throw that away. Pads sit under friends
+    /// throughout, the way every other band on the two shelves does.
+    ///
+    /// Each step is used exactly once, in shelf order.
+    static let priceLadderSkin = [
+        1000, 1200, 1400, 1700, 2000, 2300, 2700, 3100, 3600, 4200, 4900, 5800,
+    ]
+
+    static let priceLadderPad = [1000, 1100, 1300, 1500, 1800, 2100, 2500]
 
     /// Each seat past the three the pond starts with, in order. Rising prices,
     /// so the last seat is a long-term goal rather than a rounding error.

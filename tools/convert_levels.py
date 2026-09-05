@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Convert PondPulse's Kotlin level data (Levels.kt / MoreLevels.kt / NewLevels.kt,
+"""Convert PondPulse's Kotlin level data (LevelMaps1to10 / 11to20 / 21to30,
 plus BonusLevels.kt) into generated Swift (LevelMaps1/2/3.swift, BonusMaps.swift).
-Mirrors ids, slack, rows and tips 1:1."""
+Mirrors ids, slack, rows and tips 1:1.
+
+The three map files were called Levels.kt / MoreLevels.kt / NewLevels.kt until
+Android's "order part 1" split the pack assembly out of them; the Swift file
+names did not follow, because they are what the Xcode project references."""
 import re
 import sys
 
@@ -70,13 +74,13 @@ def emit(pars, packs, out_path, header):
     print(f"{out_path}: {len(packs)} packs, {n} levels, {len(pars)} pars")
 
 
-levels_pars, levels_packs = parse_file(f"{SRC}/Levels.kt")
-more_pars, more_packs = parse_file(f"{SRC}/MoreLevels.kt")
-new_pars, new_packs = parse_file(f"{SRC}/NewLevels.kt")
+levels_pars, levels_packs = parse_file(f"{SRC}/LevelMaps1to10.kt")
+more_pars, more_packs = parse_file(f"{SRC}/LevelMaps11to20.kt")
+new_pars, new_packs = parse_file(f"{SRC}/LevelMaps21to30.kt")
 
-emit(levels_pars, levels_packs, f"{DST}/LevelMaps1.swift", "Hand-drawn packs 1-10 (Levels.kt)")
-emit(more_pars, more_packs, f"{DST}/LevelMaps2.swift", "Generated packs 11-20 (MoreLevels.kt)")
-emit(new_pars, new_packs, f"{DST}/LevelMaps3.swift", "Generated packs 21-30 (NewLevels.kt)")
+emit(levels_pars, levels_packs, f"{DST}/LevelMaps1.swift", "Hand-drawn packs 1-10 (LevelMaps1to10.kt)")
+emit(more_pars, more_packs, f"{DST}/LevelMaps2.swift", "Generated packs 11-20 (LevelMaps11to20.kt)")
+emit(new_pars, new_packs, f"{DST}/LevelMaps3.swift", "Generated packs 21-30 (LevelMaps21to30.kt)")
 
 # sanity: every draft has a par
 all_pars = {**levels_pars, **more_pars, **new_pars}
@@ -90,7 +94,9 @@ print(f"total levels: {total}")
 
 # ---------------------------------------------------------------- bonus ponds
 
-BONUS_DRAFT_RE = re.compile(r'draft\(\s*"(b-\d+)",\s*((?:"[^"]*",?\s*)+)\)', re.S)
+# `bonusDraft(` on Android since the golden ponds got a draft type of their own -
+# and capital-D `Draft` is why a case-sensitive `draft\(` stopped matching.
+BONUS_DRAFT_RE = re.compile(r'bonusDraft\(\s*"(b-\d+)",\s*((?:"[^"]*",\s*)+)\)', re.S)
 
 
 def emit_bonus():
@@ -107,6 +113,10 @@ def emit_bonus():
         rows = re.findall(r'"([^"]*)"', m.group(2))
         drafts.append((m.group(1), rows))
 
+    if len(drafts) != len(pars):
+        print(f"BONUS DRAFTS: parsed {len(drafts)} for {len(pars)} pars - the "
+              "Kotlin shape moved; fix BONUS_DRAFT_RE before writing.")
+        sys.exit(1)
     missing = [d for d, _ in drafts if d not in pars]
     if missing:
         print("MISSING BONUS PARS:", missing)

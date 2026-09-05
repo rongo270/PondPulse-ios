@@ -700,7 +700,7 @@ nonisolated func drawPrismPad(_ ctx: inout GraphicsContext, _ rect: CGRect) {
     ctx.fill(circle(c, cell * 0.42), with: .color(Color.white.opacity(0.14)))
     ctx.stroke(circle(c, cell * 0.42), with: .color(Color.white.opacity(0.7)), style: stroke(cell * 0.022))
     // The facet: a triangle of white catching the light off-centre.
-    var f = rotated(ctx, degrees: -18, pivot: c)
+    let f = rotated(ctx, degrees: -18, pivot: c)
     f.fill(
         polygon([
             CGPoint(x: c.x - cell * 0.14, y: c.y + cell * 0.10),

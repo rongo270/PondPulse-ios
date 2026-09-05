@@ -368,11 +368,6 @@ final class AppViewModel: ObservableObject {
 
     func globalLevelNumber(_ levelId: String) -> Int { Levels.indexOf(levelId) + 1 }
 
-    /// Highest global level number solved so far (0 = none).
-    func highestSolvedLevel() -> Int {
-        (Levels.all.lastIndex { (stars[$0.id] ?? 0) > 0 } ?? -1) + 1
-    }
-
     /// The pack the player is working through right now.
     func currentPack() -> Pack { Levels.packOf(continueLevelId()) }
 
@@ -436,7 +431,6 @@ final class AppViewModel: ObservableObject {
         if ownedIds.contains(FreeMode.unlockAllToken) { return true }
         switch unlock {
         case .free: return true
-        case .levelReward(let level): return highestSolvedLevel() >= level
         case .bonusReward(let count): return bonusPondsCleared() >= count
         case .streakReward(let days): return dailyBestStreak >= days
         case .premium: return ownedIds.contains(Catalog.premiumId)

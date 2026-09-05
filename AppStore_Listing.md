@@ -29,38 +29,63 @@ offline; purchases are processed by Apple).
 
 ## 2. In-app purchases — create these EXACTLY (ids match the Android/Play ids)
 
-**Five products, and only five.** PondPulse used to sell every theme, pond friend
-and lily pad as its own $0.49–$0.99 non-consumable — 23 products. It does not any
-more: **cosmetics are bought with coins**, and coins are earned by playing (every
-clear, every three-star, every golden pond, the Daily Pond, Splash Rush and the
-pond's four mini games all pay in). The coin packs below are a shortcut for people
-who would rather not wait, never a gate.
+**Thirteen products.** PondPulse used to sell every theme, pond friend and lily
+pad as its own $0.49-$0.99 non-consumable - 23 products. It does not any more:
+**the ordinary cosmetics are bought with coins**, and coins are earned by playing
+(every clear, every three-star, every golden pond, the Daily Pond, Splash Rush and
+the pond's four mini games all pay in). What still takes real money is the premium
+upgrade, the hint pack, three coin packs, and the eight *special* cosmetics that
+were never on a coin shelf: five exclusive friends and three grand themes.
 
-All prices USD; Apple maps them to local price points. Reference names and ids must
-match `PondPulse/Products.storekit` (already in the project) and `Catalog.swift`.
+All prices USD; Apple maps them to local price points. Ids and prices must match
+`PondPulse.storekit` (in the project root) and `Catalog.swift` - those two agree,
+and are the source of truth if this file ever drifts again.
 
 | Product ID | Type | Reference name | Price |
 |---|---|---|---|
 | `premium` | Non-consumable | PondPulse Premium | **$2.99** |
-| `hints_50` | **Consumable** | Hint Pack (50) | **$0.99** |
-| `coins_100` | **Consumable** | 100 Coins | **$0.99** |
-| `coins_250` | **Consumable** | 250 Coins | **$1.99** |
-| `coins_500` | **Consumable** | 500 Coins | **$3.49** |
+| `hints_50` | **Consumable** | Hint Pack | **$1.99** |
+| `coins_100` | **Consumable** | 1,000 Coins | **$0.99** |
+| `coins_250` | **Consumable** | 2,500 Coins | **$1.99** |
+| `coins_500` | **Consumable** | 5,000 Coins | **$3.99** |
+| `skin_starwhale` | Non-consumable | Star Whale | **$0.99** |
+| `skin_kitsune` | Non-consumable | Kitsune | **$0.99** |
+| `skin_griffin` | Non-consumable | Griffin | **$0.99** |
+| `skin_seadragon` | Non-consumable | Sea Dragon | **$0.99** |
+| `skin_moonrabbit` | Non-consumable | Moon Rabbit | **$0.99** |
+| `theme_autumn` | Non-consumable | Autumn Gold Theme | **$1.99** |
+| `theme_opal` | Non-consumable | Opal Lagoon Theme | **$2.99** |
+| `theme_ember` | Non-consumable | Ember Hollow Theme | **$2.99** |
+
+> **The three ids that do not say what they grant.** `hints_50` grants **25**
+> hints, `coins_100` grants **1,000** coins, `coins_250` grants **2,500**, and
+> `coins_500` grants **5,000**. The ids are frozen - they are live and shared with
+> Android's Play Billing - but the *display name* is not, so name them for what
+> they actually hand over. A product called "100 Coins" that pays 1,000 is a
+> refund request either way round.
 
 ### Display names and descriptions
 
 | Product | Display name | Description |
 |---|---|---|
-| `premium` | PondPulse Premium | 150 more ponds, every pond open instantly, unlimited hints, and nine exclusive pond friends, lily pads and a theme — one purchase, yours forever. |
-| `hints_50` | Hint Pack (50) | 50 extra hints for tricky ponds. |
-| `coins_100` | 100 Coins | 100 coins to spend on pond friends, lily pads, themes and decorations. |
-| `coins_250` | 250 Coins | 250 coins to spend on pond friends, lily pads, themes and decorations. |
-| `coins_500` | 500 Coins | 500 coins to spend on pond friends, lily pads, themes and decorations. |
+| `premium` | PondPulse Premium | 150 more ponds, every pond open instantly, unlimited hints, and nine exclusive pond friends and themes. |
+| `hints_50` | Hint Pack | 25 extra hints for tricky ponds. |
+| `coins_100` | 1,000 Coins | 1,000 coins to spend on pond friends, lily pads, themes and decorations. |
+| `coins_250` | 2,500 Coins | 2,500 coins to spend on pond friends, lily pads, themes and decorations. |
+| `coins_500` | 5,000 Coins | 5,000 coins to spend on pond friends, lily pads, themes and decorations. |
+| `skin_starwhale` | Star Whale | An exclusive pond friend, sold on its own. |
+| `skin_kitsune` | Kitsune | An exclusive pond friend, sold on its own. |
+| `skin_griffin` | Griffin | An exclusive pond friend, sold on its own. |
+| `skin_seadragon` | Sea Dragon | An exclusive pond friend, sold on its own. |
+| `skin_moonrabbit` | Moon Rabbit | An exclusive pond friend, sold on its own. |
+| `theme_autumn` | Autumn Gold Theme | A warm autumn palette for the whole pond. |
+| `theme_opal` | Opal Lagoon Theme | A shifting opal palette for the whole pond. |
+| `theme_ember` | Ember Hollow Theme | A deep ember palette for the whole pond. |
 
-> **Nothing else is created in App Store Connect.** Every friend, lily pad, theme,
-> decoration, sky and pond seat is priced in coins inside the app (`CoinBank`), or
-> handed out for reaching a level, clearing golden ponds, or holding a daily
-> streak. The nine premium exclusives (Royal Lagoon, Baby Dragon, Narwhal, Beaver,
+> **Nothing else is created in App Store Connect.** Every other friend, lily pad,
+> theme, decoration, sky and pond seat is priced in coins inside the app
+> (`CoinBank`), or handed out for clearing golden ponds or holding a daily streak.
+> The nine premium exclusives (Royal Lagoon, Baby Dragon, Narwhal, Beaver,
 > Phoenix Duckling, Unicorn Duck, Royal Crown, Aurora, Sunburst) come with
 > `premium` and are not separately purchasable.
 

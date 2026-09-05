@@ -737,16 +737,24 @@ private struct RosterPanel: View {
             )
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    PanelSection(text: strings["shop_section_skins"])
-                    tileRows(Catalog.skins.map(\.id)) { id in
-                        let skin = Catalog.skinById(id)
-                        let can = vm.isOwned(skin.unlock, productId: Catalog.skinProductId(skin.id))
-                        RosterTile(
-                            name: strings[skin.nameKey],
-                            lockLabel: can ? nil : lockLabel(skin.unlock, strings),
-                            selected: skin.id == vm.skinId,
-                            onTap: { if can { vm.selectSkin(skin.id) } }
-                        ) { SkinPreview(skinId: skin.id).aspectRatio(1, contentMode: .fit) }
+                    // Seventy-three friends in one unbroken grid says nothing
+                    // about how any of them is got. Cut along the same ladder
+                    // the shop's shelf uses, so the two screens describe the
+                    // collection the same way.
+                    ForEach(friendGroups(), id: \.titleKey) { group in
+                        if !group.skins.isEmpty {
+                            PanelSection(text: strings[group.titleKey])
+                            tileRows(group.skins.map(\.id)) { id in
+                                let skin = Catalog.skinById(id)
+                                let can = vm.isOwned(skin.unlock, productId: Catalog.skinProductId(skin.id))
+                                RosterTile(
+                                    name: strings[skin.nameKey],
+                                    lockLabel: can ? nil : lockLabel(skin.unlock, strings),
+                                    selected: skin.id == vm.skinId,
+                                    onTap: { if can { vm.selectSkin(skin.id) } }
+                                ) { SkinPreview(skinId: skin.id).aspectRatio(1, contentMode: .fit) }
+                            }
+                        }
                     }
                     PanelSection(text: strings["shop_section_pads"])
                     tileRows(Catalog.pads.map(\.id)) { id in
@@ -773,10 +781,35 @@ private struct RosterPanel: View {
     }
 }
 
+/// One heading in the roster, and the friends under it.
+private struct FriendGroup {
+    let titleKey: String
+    let skins: [SkinItem]
+}
+
+/// The roster's sections, in the order the ladder puts them.
+///
+/// The first heading used to be "Earned by playing" and held the level prizes as
+/// well as the free pair. Nothing is pinned to a level number any more, so what
+/// is left under it is what the game opens with, and it says so.
+private func friendGroups() -> [FriendGroup] {
+    func group(_ key: String, _ keep: (Unlock) -> Bool) -> FriendGroup {
+        FriendGroup(titleKey: key, skins: Catalog.skins.filter { keep($0.unlock) })
+    }
+    return [
+        group("friends_section_free", \.isFree),
+        group("friends_section_golden") { $0.rewardBonusPonds != nil },
+        group("friends_section_daily") { $0.rewardStreak != nil },
+        group("friends_section_themes") { $0.themeFriendOf != nil },
+        group("friends_section_coins") { $0.coinPrice != nil },
+        group("friends_section_special", \.isMoney),
+        group("friends_section_premium", \.isPremium),
+    ]
+}
+
 /// What a locked roster square says instead of a price.
 private func lockLabel(_ unlock: Unlock, _ strings: Strings) -> String {
     switch unlock {
-    case .levelReward(let level): return strings["shop_reward_level", level]
     case .bonusReward(let count): return strings["bonus_locked_shop", count]
     case .streakReward(let days): return strings["collection_streak_lock", days]
     case .premium: return strings["collection_premium_lock"]

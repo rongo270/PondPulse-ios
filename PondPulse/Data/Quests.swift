@@ -12,8 +12,8 @@
 //  deliberately far bigger than anything progress alone can buy. Progress tops
 //  out at about a fifth of it.
 //
-//  The other four fifths are bought here, a few hundred coins at a time, by
-//  turning up. A day is worth roughly a five-hundredth of the shop: nothing on
+//  The other four fifths are bought here, a couple of hundred coins at a time,
+//  by turning up. A day is worth roughly a thousandth of the shop: nothing on
 //  its own, and most of the catalogue over a year of mornings.
 //
 //  ### The board is the same for everybody
@@ -49,17 +49,24 @@ enum Quests {
     static let perDay = 3
 
     /// On top of the three, for clearing the whole board.
-    static let allDoneBonus = 150
+    static let allDoneBonus = 70
 
     /// What one quest pays, by how much work it is.
+    ///
+    /// Halved on 2026-09-04, along with every ladder rung, and rounded to a
+    /// round ten. A day used to be worth 500 coins, which meant a fortnight of
+    /// mornings bought the dearest thing on the shelf and the campaign was
+    /// pocket change beside it; a day is 240 now. The shop is deliberately
+    /// bigger than progress alone can buy, and it stops being a shop the moment
+    /// turning up covers it.
     enum Tier: Int, CaseIterable {
         case easy = 0, middling = 1, hard = 2
 
         var coins: Int {
             switch self {
-            case .easy: return 60
-            case .middling: return 110
-            case .hard: return 180
+            case .easy: return 30
+            case .middling: return 50
+            case .hard: return 90
             }
         }
     }
@@ -116,15 +123,33 @@ enum Quests {
     /// their goal and simply pay more when they are drawn as the hard slot,
     /// which is honest: on a day you have not touched the daily yet, it *is* the
     /// hard one.
+    ///
+    /// The raw values are the storage ids, and they are written out rather than
+    /// left to the case names: a camel-cased `rushScore` builds the string key
+    /// `quest_rushScore`, which does not exist - Android's is `quest_rush_score`
+    /// - so half of every day's board drew its own key instead of a sentence.
+    /// They are also what a paid quest is written down under, so they match
+    /// Android's `Kind.id` character for character.
     enum Kind: String, CaseIterable, Identifiable {
         case ponds, stars, three, daily, golden
-        case rushScore, rushRuns, miniPoints, miniRuns, miniVariety
-        case splashes, pondTaps
+        case rushScore = "rush_score"
+        case rushRuns = "rush_runs"
+        case miniPoints = "mini_points"
+        case miniRuns = "mini_runs"
+        case miniVariety = "mini_variety"
+        case splashes
+        case pondTaps = "pond_taps"
 
         var id: String { rawValue }
 
-        /// A format string taking the goal.
+        /// A format string taking the goal, except on the two that do not
+        /// scale, whose sentences name the one thing they want.
         var titleKey: String { "quest_\(rawValue)" }
+
+        /// True when `titleKey` takes the goal as an argument. A Daily Pond is
+        /// one pond and a golden pond is one golden pond, so those two sentences
+        /// have no number in them to fill.
+        var takesCount: Bool { self != .daily && self != .golden }
 
         var symbol: String {
             switch self {

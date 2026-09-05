@@ -62,7 +62,12 @@ func currentEpochDay(_ date: Date = Date()) -> Int {
 struct ProgressStore {
 
     /// Hints every install starts with; buying packs adds more.
-    static let freeHints = 150
+    ///
+    /// Ten, which is enough to be stuck twice in the first few packs and still
+    /// have some left. It used to be 150 - a number nobody could spend, which
+    /// made the hint counter furniture and the hint pack unsellable. A hint is
+    /// only worth buying if running out is a thing that happens.
+    static let freeHints = 10
 
     /// Hints for clearing a Daily Pond, before the streak bonus.
     static let dailyHintReward = 2
@@ -180,7 +185,17 @@ struct ProgressStore {
 
     var haptics: Bool { defaults.object(forKey: Keys.haptics) as? Bool ?? true }
 
-    var debugTools: Bool { defaults.bool(forKey: Keys.debugTools) }
+    /// Whether the level skipper is allowed in the pond.
+    ///
+    /// Gated on `FreeMode.unlockable` for the same reason `unlockAll` below is,
+    /// and not on the stored preference alone: the switch that writes the key is
+    /// only *drawn* in a build where the section exists, but the key itself
+    /// outlives the build that wrote it. A device that ran a debug build with
+    /// the tools on, and then took a release build over the top of it, kept the
+    /// stored `true` - and a shipped pond would have grown a "skip this level"
+    /// button. Reading it through the same gate makes a release build answer
+    /// `false` whatever is on disk.
+    var debugTools: Bool { FreeMode.unlockable && defaults.bool(forKey: Keys.debugTools) }
 
     /// Whether the tester has asked for everything to be open.
     ///
@@ -585,9 +600,11 @@ struct ProgressStore {
     /// The scale the stored coin totals are written in.
     ///
     /// 1 is the original economy; 2 is the ×10 rescale, where a friend costs
-    /// 1500 rather than 150 and a pond pays 50 rather than 5. It is a version
-    /// rather than a flag so the next change to the numbers has somewhere to go.
-    private static let economyVersion = 2
+    /// 1500 rather than 150 and a pond pays 50 rather than 5; 3 is the hint
+    /// re-tune, where an install starts with ten rather than a hundred and
+    /// fifty. It is a version rather than a flag so the next change to the
+    /// numbers has somewhere to go.
+    private static let economyVersion = 3
 
     /// Brings a save written before the rescale up to today's numbers.
     ///
@@ -608,6 +625,18 @@ struct ProgressStore {
             defaults.set(coinsGranted * 10, forKey: Keys.coinsGranted)
             defaults.set(coinsSpent * 10, forKey: Keys.coinsSpent)
             defaults.set(pondWeekEarned * 10, forKey: Keys.pondWeekEarned)
+        }
+        // A save written when an install began with 150 hints is holding a pile
+        // nobody can spend, which is the one thing that hides the whole hint
+        // economy from the player who most needs to see it - a tester. Clamped
+        // rather than left alone, and only on the way past version 2, so it
+        // happens once and never touches a hint bought afterwards.
+        //
+        // This does take hints off anyone who had already bought some, which is
+        // only safe because it runs before 1.0 is on the store. Drop this block
+        // rather than ship it to players who have paid for a pack.
+        if from < 3, hintsLeft > Self.freeHints {
+            setHintsLeft(Self.freeHints)
         }
         defaults.set(Self.economyVersion, forKey: Keys.economyVersion)
     }

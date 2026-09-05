@@ -22,6 +22,17 @@ struct GameView: View {
     /// Set only when this clear was the pond's first, i.e. when it paid a prize.
     @State private var bonusFirstClear = false
 
+    /// The heading and the line this win closes on.
+    ///
+    /// The card used to grade the win - "Perfect - solved in par", "Solved with
+    /// 2 splashes to spare" - which is the one thing a player who has just won
+    /// does not need told, and it read the same way every pond. A heading and a
+    /// line, drawn at random, so four hundred and fifty ponds do not all end
+    /// with the same sentence. Drawn once per win: it must not reshuffle under
+    /// the card while it is up, and a replay is a new win and gets a new one.
+    @State private var winTitle = ""
+    @State private var winLine = ""
+
     /// Snapshotted on arrival, before any win of this visit can bank a star, so
     /// it means "was still unsolved when the player walked in".
     private let wasUnsolved: Bool
@@ -190,6 +201,8 @@ struct GameView: View {
         .task(id: state.won) {
             if state.won {
                 bonusFirstClear = vm.bonusPrizePaidFor == levelId
+                winTitle = strings.array("win_titles").randomElement() ?? strings["app_name"]
+                winLine = strings.array("win_lines").randomElement() ?? ""
                 try? await Task.sleep(for: .seconds(1.1))
                 showWinCard = true
             } else {
@@ -232,17 +245,18 @@ struct GameView: View {
     }
 
     private var winCard: some View {
-        let state = controller.state
         let spec = controller.spec
         let stars = controller.stars()
-        let levelNumber = vm.globalLevelNumber(levelId)
         let bonusCleared = vm.bonusPondsCleared()
 
-        // A cosmetic is celebrated only on the very clear that earns it.
-        func justEarned(_ unlock: Unlock) -> Bool {
+        // A cosmetic is celebrated only on the very clear that earns it - and
+        // only when that clear is what opened it. An item with a coin price as
+        // well as a golden-pond rung may have been bought months ago, and "New
+        // friend unlocked!" for one already in the pond is the card lying to the
+        // player about what just happened.
+        func justEarned(_ unlock: Unlock, _ productId: String) -> Bool {
+            guard !vm.owned.contains(productId) else { return false }
             switch unlock {
-            case .levelReward(let level):
-                return !spec.isBonus && level == levelNumber
             // bonusFirstClear marks a first-ever clear, so replays stay quiet.
             case .bonusReward(let count):
                 return spec.isBonus && bonusFirstClear && count == bonusCleared
@@ -257,17 +271,18 @@ struct GameView: View {
                 return false
             }
         }
-        let rewardSkin = Catalog.skins.first { justEarned($0.unlock) }
-        let rewardTheme = Catalog.themes.first { justEarned($0.unlock) }
-        let rewardPad = Catalog.pads.first { justEarned($0.unlock) }
+        let rewardSkin = Catalog.skins.first { justEarned($0.unlock, Catalog.skinProductId($0.id)) }
+        let rewardTheme = Catalog.themes.first { justEarned($0.unlock, Catalog.themeProductId($0.id)) }
+        let rewardPad = Catalog.pads.first { justEarned($0.unlock, Catalog.padProductId($0.id)) }
         let rewardDecor = PondCatalog.decor.first {
             spec.isBonus && bonusFirstClear && $0.bonusCount == bonusCleared
+                && !vm.owned.contains(PondCatalog.decorProductId($0.id))
         }
 
         return OverlayCard {
-            SectionTitle(strings[spec.isBonus ? "bonus_win_title" : "win_title"])
+            SectionTitle(spec.isBonus ? strings["bonus_win_title"] : winTitle)
             StarsRow(stars: stars)
-            Text(winMessage(state: state, spec: spec))
+            Text(winMessage(spec: spec))
                 .font(.game(14))
                 .foregroundStyle(palette.textSecondary)
                 .multilineTextAlignment(.center)
@@ -345,12 +360,10 @@ struct GameView: View {
         }
     }
 
-    private func winMessage(state: GameState, spec: LevelSpec) -> String {
+    private func winMessage(spec: LevelSpec) -> String {
         if spec.isBonus {
             return bonusFirstClear ? strings["bonus_win_prize"] : strings["bonus_win_again"]
         }
-        if state.splashesUsed <= spec.par { return strings["win_par"] }
-        if state.splashesLeft > 0 { return strings["win_over_par", state.splashesLeft] }
-        return strings["win_exact"]
+        return winLine
     }
 }

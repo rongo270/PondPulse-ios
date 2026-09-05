@@ -1,5 +1,5 @@
 // GENERATED from the Android level data by tools/convert_levels.py — do not edit by hand.
-// Hand-drawn packs 1-10 (Levels.kt)
+// Hand-drawn packs 1-10 (LevelMaps1to10.kt)
 
 extension LevelMaps {
     static let pars1: [String: Int] = [

@@ -187,10 +187,17 @@ enum PondCatalog {
     static func shoreById(_ id: String?) -> Surface { shores.first { $0.id == id } ?? shores[0] }
 
     /// Product id prefixes, so a bought decoration lands in the same owned set.
-    static func decorProductId(_ id: String) -> String { "decor_\(id)" }
-    static func weatherProductId(_ id: String) -> String { "weather_\(id)" }
-    static func waterProductId(_ id: String) -> String { "water_\(id)" }
-    static func shoreProductId(_ id: String) -> String { "shore_\(id)" }
+    ///
+    /// `nonisolated` because they are string concatenation over their argument
+    /// and touch no state at all. `SWIFT_DEFAULT_ACTOR_ISOLATION` otherwise puts
+    /// them on the main actor, and then passing one *by reference* - which
+    /// Decorate does, handing `waterProductId` to `surfaceStrip` - is an
+    /// isolation crossing the compiler has to warn about, for a function that
+    /// could never have raced with anything.
+    nonisolated static func decorProductId(_ id: String) -> String { "decor_\(id)" }
+    nonisolated static func weatherProductId(_ id: String) -> String { "weather_\(id)" }
+    nonisolated static func waterProductId(_ id: String) -> String { "water_\(id)" }
+    nonisolated static func shoreProductId(_ id: String) -> String { "shore_\(id)" }
 
     static func decorById(_ id: String) -> Decor? { decor.first { $0.id == id } }
 

@@ -12,9 +12,16 @@
 //  StoreKit products, where Apple's payment sheet *is* the confirmation and no
 //  alert of ours goes in front of it.
 //
-//  The front page shows a taster of each shelf and sends the rest to
-//  `ShopShelfView`: with 36 friends and 22 pads on sale, one page was several
-//  screens of thumb work before the themes even appeared.
+//  Two tabs, because the shop sells two unrelated things. **Pond** is the
+//  cosmetics - friends, lily pads and themes - which is what almost every visit
+//  is for and is bought with coins the game pays out. **Premium** is the three
+//  things that take real money: the upgrade, the coin packs, and the hint pack
+//  under them. Mixed into one scroll, the money cards sat above the shelves and
+//  every visit opened on an upsell.
+//
+//  Each tab shows a taster of each shelf and sends the rest to `ShopShelfView`:
+//  with 73 friends and 30 pads on sale, one page was several screens of thumb
+//  work before the themes even appeared.
 //
 
 import SwiftUI
@@ -33,6 +40,31 @@ private func previewSlice<T>(_ all: [T], _ limit: Int, _ isSelected: (T) -> Bool
     return Array((all.filter(isSelected) + all.filter { !isSelected($0) }).prefix(limit))
 }
 
+/// The shop's two halves.
+///
+/// Cosmetics and money, kept apart. They are bought with different currencies,
+/// for different reasons, and a player topping up coins is not browsing lily
+/// pads. Both labels are strings the app already had.
+private enum ShopTab: String, CaseIterable, Identifiable {
+    case pond, premium
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .pond: return "home_pond"
+        case .premium: return "shelf_tab_premium"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .pond: return "drop.fill"
+        case .premium: return "crown.fill"
+        }
+    }
+}
+
 /// A coin purchase waiting for its confirm alert. Granting equips the item too.
 ///
 /// The price rides on the pending buy rather than being re-derived at confirm
@@ -47,6 +79,48 @@ struct PendingBuy: Identifiable {
     var id: String { productId }
 }
 
+/// The shop's two tabs, as a pair of pill buttons.
+///
+/// Hand-drawn rather than a `Picker(.segmented)` so it wears the pond's palette
+/// - a system segmented control keeps its own greys whatever the theme, which
+/// on Midnight Neon or Ember Hollow reads as a piece of another app.
+private struct ShopTabBar: View {
+    @Environment(\.palette) private var palette
+    @Environment(\.strings) private var strings
+    @Binding var selected: ShopTab
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(ShopTab.allCases) { tab in
+                let isSelected = tab == selected
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { selected = tab }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(strings[tab.titleKey])
+                            .font(.game(14, .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(isSelected ? PondPalette.onAccent : palette.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        isSelected ? palette.accent : palette.surface,
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(SquishyButtonStyle())
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 10)
+    }
+}
+
 struct ShopView: View {
     @ObservedObject var vm: AppViewModel
     @Environment(\.palette) private var palette
@@ -56,6 +130,7 @@ struct ShopView: View {
     @State private var pending: PendingBuy?
     @State private var showPremiumDetails = false
     @State private var restored = false
+    @State private var tab: ShopTab = .pond
 
     var body: some View {
         let shelves = ShopShelves(vm: vm)
@@ -66,38 +141,122 @@ struct ShopView: View {
                     CoinChip(coins: vm.coins)
                 }
 
+                ShopTabBar(selected: $tab)
+
                 ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) {
-                        // Closed testing grants premium to everyone, so there is
-                        // nothing for its card to offer and nothing for the coin
-                        // packs to sell. Both come back with the economy.
-                        if !FreeMode.enabled {
-                            PremiumCard(
-                                isPremium: vm.isPremium,
-                                levelCount: vm.premiumLevelCount(),
-                                price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
-                                onOpenDetails: { showPremiumDetails = true },
-                                onBuy: { buyForMoney(Catalog.premiumId) }
-                            )
+                        switch tab {
+                        case .premium: premiumTab
+                        case .pond: pondTab(shelves)
                         }
 
-                        if !vm.isPremium {
-                            HintPackCard(
-                                hintsLeft: vm.hintsLeft,
-                                affordable: vm.canAfford(CoinBank.hintBundle * CoinBank.priceHint),
-                                packPrice: vm.price(Catalog.hintsId, fallback: Catalog.hintsPrice),
-                                onBuyWithCoins: { vm.buyHints(count: CoinBank.hintBundle) },
-                                onBuyPack: { buyForMoney(Catalog.hintsId) }
-                            )
-                        }
+                        Text(strings["shop_note"])
+                            .font(.game(12))
+                            .foregroundStyle(palette.textSecondary.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 10)
 
-                        if !FreeMode.enabled {
-                            CoinPacksCard(coins: vm.coins, priceOf: { vm.price($0, fallback: $1) }) { productId in
-                                buyForMoney(productId)
+                        // App Store restore, for non-consumables on a new device.
+                        Button {
+                            Task {
+                                await vm.restorePurchases()
+                                restored = true
                             }
+                        } label: {
+                            Text(restored ? "✓ " + strings["shop_restored"] : strings["shop_restore"])
+                                .font(.game(13, .semibold))
+                                .foregroundStyle(restored ? palette.accent : palette.textSecondary)
                         }
+                        .buttonStyle(.plain)
+                        .padding(.top, 4)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 32)
+                }
+                // DEBUG-only: open the shop already scrolled to one section, so a
+                // screenshot run can cover the parts that live below the fold.
+                .onAppear {
+                    #if DEBUG
+                    if let section = ProcessInfo.processInfo.environment["PP_SHOP_SECTION"] {
+                        if section == "premium" || section == "coins" { tab = .premium }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            proxy.scrollTo("section-\(section)", anchor: .top)
+                        }
+                    }
+                    #endif
+                }
+                }
+            }
+            .pondContentWidth()
 
+            purchasingVeil
+
+            if let theme = previewTheme {
+                themeDialog(theme, shelves: shelves)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: previewTheme?.id)
+        .coinConfirm($pending, coins: vm.coins) { buy in
+            if vm.buyWithCoins(price: buy.price, productId: buy.productId) { buy.onGranted() }
+        }
+        .sheet(isPresented: $showPremiumDetails) {
+            PremiumDetailsSheet(
+                isPremium: vm.isPremium,
+                levelCount: vm.premiumLevelCount(),
+                price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
+                onBuy: {
+                    showPremiumDetails = false
+                    buyForMoney(Catalog.premiumId)
+                }
+            )
+            .environment(\.palette, palette)
+            .environment(\.strings, strings)
+        }
+    }
+
+    /// The three things that take real money: the upgrade, the coin packs, and
+    /// the hint pack under them.
+    ///
+    /// Coins sit above hints because hints are bought *with* coins as well as
+    /// with money - a player who has just topped up can buy the bundle on the
+    /// card below without leaving the page.
+    @ViewBuilder private var premiumTab: some View {
+        // Closed testing grants premium to everyone, so there is nothing for
+        // its card to offer and nothing for the coin packs to sell. Both come
+        // back with the economy.
+        if !FreeMode.enabled {
+            PremiumCard(
+                isPremium: vm.isPremium,
+                levelCount: vm.premiumLevelCount(),
+                price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
+                onOpenDetails: { showPremiumDetails = true },
+                onBuy: { buyForMoney(Catalog.premiumId) }
+            )
+            .id("section-premium")
+
+            CoinPacksCard(coins: vm.coins, priceOf: { vm.price($0, fallback: $1) }) { productId in
+                buyForMoney(productId)
+            }
+            .id("section-coins")
+        }
+
+        // Premium never runs out of hints, so it is never sold them.
+        if !vm.isPremium {
+            HintPackCard(
+                hintsLeft: vm.hintsLeft,
+                affordable: vm.canAfford(CoinBank.hintBundle * CoinBank.priceHint),
+                packPrice: vm.price(Catalog.hintsId, fallback: Catalog.hintsPrice),
+                onBuyWithCoins: { vm.buyHints(count: CoinBank.hintBundle) },
+                onBuyPack: { buyForMoney(Catalog.hintsId) }
+            )
+            .id("section-hints")
+        }
+    }
+
+    /// The cosmetic shelves, each showing a taster with the rest one tap away.
+    @ViewBuilder private func pondTab(_ shelves: ShopShelves) -> some View {
                         // Friends first - they are what the player looks at all
                         // game - then pads, then themes, which are full-width
                         // rows and so cost the most height per item.
@@ -139,69 +298,6 @@ struct ShopView: View {
                         if shelves.themes.count > themesPreview {
                             ShelfLink(total: shelves.themes.count) { vm.navigate(.shopShelf(.themes)) }
                         }
-
-                        Text(strings["shop_note"])
-                            .font(.game(12))
-                            .foregroundStyle(palette.textSecondary.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 10)
-
-                        // App Store restore, for non-consumables on a new device.
-                        Button {
-                            Task {
-                                await vm.restorePurchases()
-                                restored = true
-                            }
-                        } label: {
-                            Text(restored ? "✓ " + strings["shop_restored"] : strings["shop_restore"])
-                                .font(.game(13, .semibold))
-                                .foregroundStyle(restored ? palette.accent : palette.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 4)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
-                }
-                // DEBUG-only: open the shop already scrolled to one section, so a
-                // screenshot run can cover the parts that live below the fold.
-                .onAppear {
-                    #if DEBUG
-                    if let section = ProcessInfo.processInfo.environment["PP_SHOP_SECTION"] {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            proxy.scrollTo("section-\(section)", anchor: .top)
-                        }
-                    }
-                    #endif
-                }
-                }
-            }
-            .pondContentWidth()
-
-            purchasingVeil
-
-            if let theme = previewTheme {
-                themeDialog(theme, shelves: shelves)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: previewTheme?.id)
-        .coinConfirm($pending, coins: vm.coins) { buy in
-            if vm.buyWithCoins(price: buy.price, productId: buy.productId) { buy.onGranted() }
-        }
-        .sheet(isPresented: $showPremiumDetails) {
-            PremiumDetailsSheet(
-                isPremium: vm.isPremium,
-                levelCount: vm.premiumLevelCount(),
-                price: vm.price(Catalog.premiumId, fallback: Catalog.premiumPrice),
-                onBuy: {
-                    showPremiumDetails = false
-                    buyForMoney(Catalog.premiumId)
-                }
-            )
-            .environment(\.palette, palette)
-            .environment(\.strings, strings)
-        }
     }
 
     @ViewBuilder private var purchasingVeil: some View {
@@ -221,7 +317,6 @@ struct ShopView: View {
             selected: theme.id == vm.themeId,
             usable: shelves.usable(theme.unlock, Catalog.themeProductId(theme.id)),
             affordable: vm.canAfford(theme.unlock.coinPrice ?? 0),
-            highestSolved: vm.highestSolvedLevel(),
             onApply: {
                 vm.selectTheme(theme.id)
                 previewTheme = nil
@@ -383,19 +478,26 @@ struct ShopShelves {
 ///
 /// So there are five, they are one word each, and they carry an SF Symbol:
 /// **Yours** (a lens over everything already owned, wherever it came from),
-/// **Play**, **Earn** - coins, streaks and golden ponds together, with each card
-/// saying what it in particular takes - **Themes**, and **Legends**. Premium
-/// appears only once it is owned, because until then its items are not on the
-/// shelf. The same five serve the lily pads, which simply have fewer of them.
+/// **Coins** - the shelf you buy from, cheapest first - **Earn** - golden ponds
+/// and daily streaks, with each card saying what it in particular takes -
+/// **Themes**, and **Legends**. Premium appears only once it is owned, because
+/// until then its items are not on the shelf.
+///
+/// There used to be a **Play** tab, for the cosmetics pinned to a level number.
+/// Those are bought now, and what was left was the duckling and the lily pad the
+/// game opens with - a tab for two things nobody has to find. They are owned
+/// from the first launch, so Yours is where they live.
+///
+/// The same tabs serve the lily pads, which simply have fewer of them.
 enum ShelfGroup: String, CaseIterable, Identifiable {
-    case owned, play, earn, themes, legends, premium
+    case owned, coins, earn, themes, legends, premium
 
     var id: String { rawValue }
 
     var titleKey: String {
         switch self {
         case .owned: return "shelf_tab_yours"
-        case .play: return "shelf_tab_play"
+        case .coins: return "shelf_tab_coins"
         case .earn: return "shelf_tab_earn"
         case .themes: return "shelf_tab_themes"
         case .legends: return "shelf_tab_legends"
@@ -406,7 +508,7 @@ enum ShelfGroup: String, CaseIterable, Identifiable {
     var descKey: String {
         switch self {
         case .owned: return "shelf_desc_yours"
-        case .play: return "shelf_desc_play"
+        case .coins: return "shelf_desc_coins"
         case .earn: return "shelf_desc_earn"
         case .themes: return "friends_theme_hint"
         case .legends: return "friends_special_hint"
@@ -417,7 +519,7 @@ enum ShelfGroup: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .owned: return "checkmark.circle.fill"
-        case .play: return "star.fill"
+        case .coins: return "circle.hexagongrid.fill"
         case .earn: return "gift.fill"
         case .themes: return "paintpalette.fill"
         case .legends: return "sparkles"
@@ -431,14 +533,15 @@ enum ShelfGroup: String, CaseIterable, Identifiable {
     func holds(_ unlock: Unlock, owned: Bool) -> Bool {
         switch self {
         case .owned: return owned
-        // Free and level rewards share a tab: both are "you played for this",
-        // and a tab holding only the one starting item is a tab for nothing.
-        case .play: return unlock.isFree || unlock.rewardLevel != nil
-        // The three long climbs, together. They are different ladders but the
-        // same answer to "how do I get that?" - keep at it. Each card still
-        // says which ladder it is on.
-        case .earn:
-            return unlock.coinPrice != nil || unlock.rewardBonusPonds != nil || unlock.rewardStreak != nil
+        // Everything with a price, in one place and cheapest first. An item with
+        // a golden-pond rung as well as a price belongs here too - its card says
+        // "or clear 9 golden ponds" underneath, which is the whole reason that
+        // line exists.
+        case .coins: return unlock.coinPrice != nil
+        // The two long climbs, together. They are different ladders but the same
+        // answer to "how do I get that?" - keep at it. Each card still says
+        // which ladder it is on.
+        case .earn: return unlock.rewardBonusPonds != nil || unlock.rewardStreak != nil
         case .themes: return unlock.themeFriendOf != nil
         case .legends: return unlock.isMoney
         case .premium: return unlock.isPremium
@@ -511,7 +614,7 @@ struct ShopShelfView: View {
             }
         }()
         let groups = ShelfGroup.allCases.filter { g in entries.contains { g.holds($0.0, owned: $0.1) } }
-        let current = groups.contains(tab) ? tab : (groups.first ?? .play)
+        let current = groups.contains(tab) ? tab : (groups.first ?? .coins)
         let titleKey: String
         let descKey: String
         let owned: Int
@@ -609,7 +712,6 @@ struct ShopShelfView: View {
                     selected: theme.id == vm.themeId,
                     usable: shelves.usable(theme.unlock, Catalog.themeProductId(theme.id)),
                     affordable: vm.canAfford(theme.unlock.coinPrice ?? 0),
-                    highestSolved: vm.highestSolvedLevel(),
                     onApply: {
                         vm.selectTheme(theme.id)
                         previewTheme = nil
@@ -850,7 +952,7 @@ private struct HintPackCard: View {
                     Text(strings["shop_hints_title"])
                         .font(.game(15, .bold))
                         .foregroundStyle(palette.textPrimary)
-                    Text(strings["shop_hints_desc", hintsLeft])
+                    Text(strings["shop_hints_desc", Catalog.hintsPerPack, hintsLeft])
                         .font(.game(12))
                         .foregroundStyle(palette.textSecondary)
                 }
@@ -1037,10 +1139,6 @@ private struct ThemeRow: View {
                     Text(strings["shop_select"])
                         .font(.game(13, .semibold))
                         .foregroundStyle(palette.textSecondary)
-                } else if let level = theme.unlock.rewardLevel {
-                    Text(strings["shop_reward_level", level])
-                        .font(.game(13, .semibold))
-                        .foregroundStyle(palette.textSecondary)
                 } else if let count = theme.unlock.rewardBonusPonds {
                     Text(strings["bonus_locked_shop", count])
                         .font(.game(13, .semibold))
@@ -1156,7 +1254,6 @@ struct ShopGridCard<Preview: View>: View {
     private var caption: String {
         if selected { return strings["shop_selected"] }
         if usable { return strings["shop_select"] }
-        if let level = unlock.rewardLevel { return strings["shop_reward_level", level] }
         if let count = unlock.rewardBonusPonds { return strings["bonus_locked_shop", count] }
         if let days = unlock.rewardStreak { return strings["collection_streak_lock", days] }
         // The theme's name, not the whole sentence: the tab groups these under a
@@ -1182,7 +1279,6 @@ private struct ThemePreviewDialog: View {
     let selected: Bool
     let usable: Bool
     let affordable: Bool
-    let highestSolved: Int
     let onApply: () -> Void
     let onBuy: () -> Void
     let onDismiss: () -> Void
@@ -1266,11 +1362,6 @@ private struct ThemePreviewDialog: View {
                         }
                     } else if let days = theme.unlock.rewardStreak {
                         Text(strings["collection_streak_lock", days])
-                            .font(.game(14))
-                            .foregroundStyle(palette.textSecondary)
-                            .multilineTextAlignment(.center)
-                    } else if let level = theme.unlock.rewardLevel {
-                        Text(strings["shop_reward_unlock_at", level, highestSolved])
                             .font(.game(14))
                             .foregroundStyle(palette.textSecondary)
                             .multilineTextAlignment(.center)

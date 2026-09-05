@@ -165,7 +165,11 @@ private struct QuestRow: View {
             .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(strings[quest.kind.titleKey, quest.goal])
+                Text(
+                    quest.kind.takesCount
+                        ? strings[quest.kind.titleKey, quest.goal]
+                        : strings[quest.kind.titleKey]
+                )
                     .font(.game(14, .bold))
                     .foregroundStyle(done ? palette.textPrimary : palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

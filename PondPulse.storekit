@@ -18,12 +18,12 @@
       "type": "NonConsumable"
     },
     {
-      "displayPrice": "0.99",
+      "displayPrice": "1.99",
       "familyShareable": false,
       "internalID": "1001",
       "localizations": [
         {
-          "description": "50 extra hints.",
+          "description": "25 extra hints.",
           "displayName": "Hint Pack",
           "locale": "en_US"
         }
@@ -38,13 +38,13 @@
       "internalID": "1002",
       "localizations": [
         {
-          "description": "100 pond coins.",
-          "displayName": "100 Coins",
+          "description": "1,000 pond coins.",
+          "displayName": "1,000 Coins",
           "locale": "en_US"
         }
       ],
       "productID": "coins_100",
-      "referenceName": "100 Coins",
+      "referenceName": "1,000 Coins",
       "type": "Consumable"
     },
     {
@@ -53,13 +53,13 @@
       "internalID": "1003",
       "localizations": [
         {
-          "description": "250 pond coins.",
-          "displayName": "250 Coins",
+          "description": "2,500 pond coins.",
+          "displayName": "2,500 Coins",
           "locale": "en_US"
         }
       ],
       "productID": "coins_250",
-      "referenceName": "250 Coins",
+      "referenceName": "2,500 Coins",
       "type": "Consumable"
     },
     {
@@ -68,13 +68,13 @@
       "internalID": "1004",
       "localizations": [
         {
-          "description": "500 pond coins.",
-          "displayName": "500 Coins",
+          "description": "5,000 pond coins.",
+          "displayName": "5,000 Coins",
           "locale": "en_US"
         }
       ],
       "productID": "coins_500",
-      "referenceName": "500 Coins",
+      "referenceName": "5,000 Coins",
       "type": "Consumable"
     },
     {

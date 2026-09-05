@@ -57,18 +57,20 @@ levels/strings/themes, re-run the scripts instead of editing the Swift.
 
 - 450 levels, 9 packs, 30 stages, 30 golden ponds, same play order, premium from
   global level 301.
-- **Cosmetics are bought with coins, not money.** Only five things take real
-  money: `premium`, `hints_50` and the three coin packs (`coins_100/250/500`).
+- **Cosmetics are bought with coins, not money.** Thirteen products take real
+  money: `premium`, `hints_50`, the three coin packs (`coins_100/250/500`), the
+  five special friends and the three money themes.
   Every friend, pad, theme, decoration, sky and pond seat is priced in
   `CoinBank` and paid for out of a balance the campaign, the golden ponds, the
   daily pond, Rush and the pond's games all pay into. This replaced 23 cosmetic
   IAPs at $0.49-$0.99 — the same move Android made.
-- **Purchases are real StoreKit 2** (`StoreManager.swift` + `Products.storekit`,
-  5 products), with ids identical to the Android Play Billing ids. The payment
-  sheet is the confirmation; consumables de-dupe by transaction id; refunds
-  revoke and unequip; the shop has Restore Purchases. iOS is AHEAD of Android
-  here — Android still grants locally (wire Play Billing there next).
-- Pricing: premium $2.99 · hints_50 $0.99 · coin packs $0.99/$1.99/$3.99.
+- **Purchases are real StoreKit 2** (`StoreManager.swift` + `PondPulse.storekit`
+  at the project root, 13 products), with ids identical to the Android Play
+  Billing ids. The payment sheet is the confirmation; consumables de-dupe by
+  transaction id; refunds revoke and unequip; the shop has Restore Purchases.
+  iOS is AHEAD of Android here — Android still grants locally (wire Play Billing there next).
+- Pricing: premium $2.99 · hints_50 $1.99 · coin packs $0.99/$1.99/$3.99 ·
+  special friends $0.99 · Autumn Gold $1.99 · Opal/Ember $2.99.
   Display prices come from the App Store once loaded; `Catalog`'s strings are
   the offline fallback.
 - **`FreeMode.enabled` is `false` on iOS.** Android ships it `true` for closed
@@ -86,17 +88,199 @@ levels/strings/themes, re-run the scripts instead of editing the Swift.
   mini game, `SIMCTL_CHILD_PP_START_BONUS=b-1` opens a golden pond,
   `SIMCTL_CHILD_PP_PREMIUM=1` grants premium and `SIMCTL_CHILD_PP_COINS=<n>`
   a balance, both in memory only.
-- To test purchases locally, run from Xcode — the shared scheme already selects
-  `PondPulse/Products.storekit` as its StoreKit configuration.
+- To test purchases locally, run from Xcode — the shared scheme selects
+  `PondPulse.storekit` (project root, all 13 products) as its StoreKit
+  configuration. It used to point at a `PondPulse/Products.storekit` that had
+  been left behind at five products, so the eight newer ones silently failed to
+  load in every debug run; that file is gone.
 
 ## Store status
 
-- `AppStore_Listing.md` (EN + HE; **still lists the retired 23 cosmetic IAPs —
-  rewrite it for the five that remain**), `PRIVACY.md`,
-  `SUPPORT.md` at project root; screenshots in `AppStore_Screenshots/`
-  (6.9" iPhone + 13" iPad, store-exact sizes).
-- Release archive builds clean (`1.0 (1)`); one copy sits in Xcode Organizer.
-  Distribution upload is the manual Organizer step (App Store Connect login).
+- **13 in-app purchases**, and `PondPulse.storekit`, `Catalog.swift` and
+  `AppStore_Listing.md` now all agree on which 13 (rewritten 2026-09-04 — the
+  doc had been stuck on "five products, and only five" since the coin economy
+  landed). `PondPulse/Products.storekit` is deleted; the live config is the one
+  at the project root.
+- **Three ids no longer say what they grant, and cannot be renamed.** `hints_50`
+  gives 25 hints; `coins_100` / `coins_250` / `coins_500` give 1,000 / 2,500 /
+  5,000. The ids are live and shared with Android's Play Billing, so the *display
+  name* carries the real number instead — already fixed in `PondPulse.storekit`,
+  and it has to be typed that way into App Store Connect too.
+- `PRIVACY.md` and `SUPPORT.md` sit at the project root and are **not hosted
+  anywhere yet**. App Store Connect will not accept the submission without a
+  public URL for each. GitHub Pages on the repo is the cheap answer.
+- Screenshots in `AppStore_Screenshots/` — 6.9" iPhone (1320x2868) and 13" iPad
+  (2064x2752), both store-exact.
+- Release archive builds clean at `1.0 (1)` with **zero warnings**. Distribution
+  upload is the manual Organizer step and **Ron does it, not Claude** — the App
+  Store Connect key is only in play afterwards, on Ron's say-so.
+
+## Release audit, 2026-09-04 — what was checked and what it cost
+
+The pre-upload pass: remove the credit, prove nothing crashes, prove nothing can
+be farmed. **Two source files changed. Everything else was verification**, and
+the point of writing it down is so the next session does not pay for it twice.
+
+### The two real changes
+
+- **"Made with ❤ by Rongo" is gone**, from all 16 `settings_about` strings. It
+  was stripped in `PondPulse/Localization/L10nTables.swift` *and* in Android's
+  16 `values*/strings.xml`, because the iOS table is generated — editing only
+  the Swift side would have let the next `tools/convert_strings.py` run put the
+  credit straight back. 32 lines, 0 leftovers (`grep -c "❤"` → 0 both sides).
+- **`ProgressStore.debugTools` is gated on `FreeMode.unlockable`**, the way
+  `unlockAll` next to it always was. The switch that writes the key is only
+  *drawn* in a debug build, but the key outlives the build that wrote it: a
+  device that ran a debug build with the tools on and then took a release build
+  over the top of it kept the stored `true`, and a shipped pond would have grown
+  a "skip this level" button. Reading it through the gate makes release answer
+  `false` whatever is on disk. This was the only hole the audit actually found.
+
+Plus eight warning fixes with no behaviour attached: four `PondCatalog` product-id
+builders marked `nonisolated` (they are string concatenation, but
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` put them on the main actor, so
+passing one *by reference* — Decorate hands `waterProductId` to `surfaceStrip` —
+read as an isolation crossing), and six `var` → `let` in the art files. **Release
+now builds with zero warnings**; keep it there.
+
+### What was proven, so it need not be re-proven
+
+Everything below ran headless. `xcrun swiftc` compiles the logic files for macOS
+without any UI dependency — the same trick as *Verifying a level port* below, and
+the way to test anything in `Data/` or `Game/` without a simulator.
+
+- **All 480 ponds** (450 campaign + 30 golden): parse, unique ids, no two
+  floaters on a cell, everything on water, budget ≥ par, none start won or
+  stranded, packs tile exactly. **Every pond is solvable inside its own budget
+  and every recorded par is the BFS optimum.**
+- **The economy, 9 scenario groups, 0 failures.** Replaying a cleared pond 50×
+  pays nothing extra (derived coins are recomputed, never banked); a worse replay
+  never downgrades; spending debits exactly the price; overspend / zero / negative
+  prices are refused with no state written; the mini-game weekly cap holds
+  exactly and resets on the next week; quests and the daily each pay once per day;
+  golden prizes pay once; reset keeps money purchases and drops coin ones; hints
+  cannot go negative. **There is no loophole that turns play into free coins.**
+- **Daily pond over 7,300 days** — always in range, never repeats back to back,
+  uses all 300 ponds evenly (24-25 each); negative and far-future days safe.
+  **Quest boards over 10,950 days** — always 3 distinct kinds, positive goals,
+  never pre-completed, kinds within 23-26%.
+- **All 6 runtime traps proven unreachable**: `Engine`'s `precondition` and its
+  two `Dictionary(uniqueKeysWithValues:)`, `LevelParser`'s `fatalError` on an
+  unknown tile (checked against all 480 maps), and the force unwraps. Remember
+  `assert` is the *only* one of these stripped in Release.
+- **Localization**: 0 format-argument mismatches across 16 languages; every
+  missing key is DEBUG-only and falls back to English.
+- **The three dev switches are hard-closed in Release**: `FreeMode.enabled`,
+  `FreeMode.unlockable`, `Catalog.cosmeticsUnlocked`.
+- **StoreKit**: only `.verified` transactions are processed, consumables are
+  de-duped by transaction id in `handled_hint_transactions`, revocation routes to
+  `onRevoked`, Restore Purchases is wired.
+- No network code, no debug prints, no TODOs. Icon 1024×1024, no alpha. Release
+  build installs, launches, and renders all 11 screens on the simulator.
+- The `AchievementsView` / `@EnvironmentObject` crash report from 2026-09-02 is
+  **stale** — neither symbol exists in the codebase any more.
+
+### Two things left open, deliberately
+
+- **A fresh install cannot enter the Pond.** `pondMinFriends` is 3 and a new
+  player owns 2 free skins, so pond quests are unreachable until they buy or earn
+  a third friend. Over 3,650 days, **75.1%** of quest boards carry at least one
+  pond-gated quest — which blocks that day's "finish all 3" bonus — and **2.2%**
+  are pond-gated on all three. Fix is one of: start with 3 friends, drop
+  `pondMinFriends` to 2, or exclude pond quests until the pond is open. It is a
+  design call, so it was left to Ron.
+- **iPad landscape is untested.** iPhone is portrait-only; iPad allows all four
+  orientations. Nothing could drive a rotation — the simulator refused
+  AppleScript (`osascript is not allowed assistive access`, -1719) — so landscape
+  was never seen. The layouts are shrink-to-fit and scroll-based so they should
+  adapt, but the cheap certain answer is locking iPad to portrait too.
+
+### Gotchas worth keeping
+
+- `xcodebuild` is not on the path: the active developer dir is
+  `/Library/Developer/CommandLineTools`. Prefix commands with
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` rather than changing
+  Ron's global `xcode-select`.
+- A standalone `swiftc` harness needs its entry file named `main.swift`, and
+  `ProgressStore.swift` drags in `Strings.swift` + `L10nTables.swift` to compile.
+- Simulator UI cannot be driven from here (no assistive access). Screens were
+  swept with `SIMCTL_CHILD_PP_*` DEBUG launch overrides plus `simctl` screenshots.
+
+## iOS-only, 2026-09-04 — shop shape and the hint economy
+
+Ron's calls, made on iOS first. **Android does not have any of this yet**; port
+it back before the two are compared again.
+
+- **The shop has two tabs.** *Pond* is the cosmetics - friends, lily pads,
+  themes - and *Premium* is the three things that take real money: the upgrade,
+  the coin packs, and the hint pack under them. One scroll put the money cards
+  above the shelves, so every visit to buy a lily pad opened on an upsell. Both
+  tab labels reuse strings the app already had (`home_pond`, `shelf_tab_premium`),
+  so nothing needed translating.
+- **Settings can switch theme, lily pad and friend.** Three rows under Language,
+  each opening a grid of what the player *owns* and nothing else - prices,
+  browsing and everything locked stay in the shop, and the picker's only exit is
+  a "Find more in the shop" button onto that shelf. The rows reuse the shop's own
+  three headings, and the theme row wears a colour swatch rather than
+  `ThemePreview`, which at 34pt was a second, blurrier duckling.
+  Dusk Pond is still what an install opens on.
+- **The hint economy was re-tuned.** An install starts with **10** hints, not
+  150; the pack is **25** hints for **$1.99**, not 50 for $0.99; five hints cost
+  **1750 coins** (`CoinBank.priceHint` 350), not 750. 150 free hints was a pile
+  nobody could spend, which made the counter furniture and the pack unsellable.
+  - The product id stays `hints_50`. It is live in App Store Connect and shared
+    with Android's Play Billing id; what a pack grants is what a re-tune gets to
+    change, what it is called is not - the same rule the coin packs keep.
+  - `economy_version` 3 clamps a pre-existing save's hint pile to 10, so a
+    tester carrying 149 of them can actually see the economy. **It takes hints
+    off anyone who had already bought some — drop that block rather than ship it
+    to players who have paid for a pack.**
+  - `shop_hints_desc` had "50" written into the sentence in all 16 languages. It
+    takes the pack size as `%1$d` now; that one edit was made in the Android
+    `strings.xml` so the generated table stays the source of truth.
+
+## Sync with Android, 2026-09-04
+
+Android's `start to public it` (859023a) and the three `coins and full screen`
+commits, brought over.
+
+- **Nothing is pinned to a level number any more.** `Unlock.levelReward` is
+  gone, and the twenty-one cosmetics that used to arrive for reaching a level
+  moved onto `CoinBank.priceLadderSkin` (12 rungs, 1000→5800) and
+  `priceLadderPad` (7 rungs, 1000→2500), cheapest where the level was lowest.
+  The Tadpole is free from the first launch and Jungle Mist is a coin theme.
+  Each ladder step is used exactly once, in shelf order.
+- **The shop's shelves lost the Play tab and gained Coins.** Everything with a
+  price sits in one place, cheapest first; Earn is golden ponds and daily
+  streaks only. Yours holds the Duckling and the Lily Pad from launch.
+- **The pond's roster is cut into six sections** along the same ladder, so the
+  collection and the shelf describe the catalogue the same way.
+- **Quests and milestones were halved** (a day is 240 coins, not 500; the nine
+  ladders total 7,300, not 14,890) — the shop stops being a shop the moment
+  turning up covers it.
+- **The win card stopped grading the win.** A heading and a line drawn at random
+  from `win_titles`/`win_lines`, so 450 ponds do not all end the same way, and a
+  prize is only celebrated when that clear is what actually opened it.
+- **The pack gallery and the level grid stand on real water** (`BoardArt.swift`,
+  the port of Android's `ui/art/BoardArt.kt`): a pack card carries a strip whose
+  depth is its difficulty, and a stage is laid out on a banked pond with reeds.
+  Level tiles are the player's own lily pad now, with the number on the pad and
+  the stars floating under it. Neither drawing may ever read a level — a pond
+  solved off the level grid is a pond you no longer have to solve.
+- **Settings opens with the language row, carrying a flag.** A player who has
+  the game in a language they cannot read cannot read "Language" either.
+- Fixed on the way through, both iOS-only:
+  - the three coin packs were being sold under ids built from their *amounts*
+    (`coins_1000/2500/5000`), which matched neither Android nor the StoreKit
+    config. They are written out now, as Android writes them.
+  - six of the twelve quest kinds drew their own storage key instead of a
+    sentence (`quest_rushScore` for `quest_rush_score`), because the enum's
+    camel-cased case names were being used as string keys.
+- `tools/convert_strings.py` now carries Android's `<string-array>` across
+  (`L10n.arrayTables`, `Strings.array(_:)`), and `tools/convert_levels.py` was
+  repointed at the renamed `LevelMaps1to10/11to20/21to30.kt` — it had been
+  unrunnable since Android's "order part 1". Level data regenerates byte for
+  byte, so no pond had drifted.
 
 ## Sync with Android, 2026-08-28
 
@@ -184,7 +368,14 @@ more splashes than the pond hands out.
 
 ## Still to do
 
-- Create the app record + the 5 IAPs in App Store Connect, after rewriting the
-  IAP tables in `AppStore_Listing.md`; host PRIVACY/SUPPORT, upload via Organizer.
+- Host `PRIVACY.md` + `SUPPORT.md` at public URLs — the one hard blocker left.
+- Create the app record and all **13** IAPs in App Store Connect, using the
+  tables in `AppStore_Listing.md` (now correct), and remember the coin/hint
+  display names carry the real amounts, not the ones in the ids.
+- Archive and upload via Organizer. **Ron uploads the bundle**; Claude may only
+  touch the App Store Connect key afterwards, and only when Ron says so.
+- Decide the two open questions in the audit section above: the new-player pond
+  gate, and whether iPad should be locked to portrait.
 - Backport Play Billing + restore strings to Android.
+- Port the 2026-09-04 iOS-only shop/settings/hint work back to Android.
 - Game Center / iCloud sync — not on Android either; skip until Android has it.

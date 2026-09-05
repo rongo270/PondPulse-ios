@@ -11,7 +11,11 @@
 
 import SwiftUI
 
-private let packColumns = 2
+/// The narrowest a pack card is allowed to get before the grid drops a column.
+///
+/// Sized so a phone gets exactly the two it always had, and an iPad stops
+/// stretching two cards across the whole slab.
+private let packCardMin: CGFloat = 170
 
 struct PacksView: View {
     @ObservedObject var vm: AppViewModel
@@ -27,7 +31,7 @@ struct PacksView: View {
     private func packGrid(_ packs: [(offset: Int, element: Pack)], currentPackId: String) -> some View {
         if !packs.isEmpty {
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: packColumns),
+                columns: [GridItem(.adaptive(minimum: packCardMin), spacing: 10)],
                 spacing: 10
             ) {
                 ForEach(packs, id: \.element.id) { _, pack in
@@ -37,6 +41,7 @@ struct PacksView: View {
                         pack: pack,
                         solved: solved,
                         stars: vm.packStars(pack),
+                        padId: vm.padId,
                         state: {
                             if premiumLocked { return .premium }
                             if !vm.isPackUnlocked(pack) { return .locked }
@@ -194,8 +199,17 @@ private struct PackCard: View {
     let pack: Pack
     let solved: Int
     let stars: Int
+    /// The lily pad the player has equipped, floating on the card's water.
+    let padId: String
     let state: PackState
     let onTap: () -> Void
+
+    /// Where this pack sits on the difficulty ladder, 0 to 1. The only thing
+    /// that separates one pack from another without showing a level.
+    private var shade: CGFloat {
+        let steps = CGFloat(Difficulty.veryHard.rawValue)
+        return steps <= 0 ? 0 : CGFloat(pack.difficulty.rawValue) / steps
+    }
 
     var body: some View {
         let locked = state == .locked || state == .premium
@@ -203,6 +217,26 @@ private struct PackCard: View {
 
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
+                // A slice of the pack's water. It draws no level: a pond solved
+                // in your head off the gallery is a pond you no longer have to
+                // solve. What it can say without giving anything away is how
+                // deep the water gets, which is the difficulty.
+                Canvas { ctx, size in
+                    drawPackWater(
+                        &ctx,
+                        size: size,
+                        palette: palette,
+                        padId: padId,
+                        seed: pack.number,
+                        shade: shade,
+                        dim: locked ? 0.45 : 1
+                    )
+                }
+                .aspectRatio(3.4, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
                     Text(strings["pack_number", pack.number])
                         .font(.game(17, .bold))
@@ -211,11 +245,18 @@ private struct PackCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     PackBadge(state: state)
                 }
-                Text(strings["pack_range", pack.firstLevelNumber, pack.lastLevelNumber])
+                // Bare digits, spoken as words - the same split the stage tabs
+                // already make, and for the same reason. "Levels 1-45" is half
+                // as wide again as "1-45", and on a half-width card at the
+                // largest font setting it truncated to "Levels 1-...", which is
+                // a row that has given up telling you the one thing it is for.
+                // Under a title that reads "Pack 1" the digits are not ambiguous.
+                Text(strings["stage_range", pack.firstLevelNumber, pack.lastLevelNumber])
                     .font(.game(12))
                     .foregroundStyle(palette.textSecondary)
                     .lineLimit(1)
                     .padding(.top, 3)
+                    .accessibilityLabel(strings["pack_range", pack.firstLevelNumber, pack.lastLevelNumber])
                 DifficultyChip(difficulty: pack.difficulty)
                     .opacity(locked ? 0.6 : 1)
                     .padding(.top, 8)
@@ -240,9 +281,12 @@ private struct PackCard: View {
                         .lineLimit(1)
                         .padding(.top, 6)
                 }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
+            .clipShape(shape)
             // The pack you are on sits a shade higher than the rest; a locked one
             // fades back, so a run of unreachable cards never shouts louder than
             // the one you can actually play.

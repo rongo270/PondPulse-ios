@@ -14,7 +14,25 @@
 
 import SwiftUI
 
-private let columns = 5
+/// How wide a level tile wants to be, and the fewest it will settle for.
+///
+/// A tile carries the pad the player has equipped, and at a fifth of a phone's
+/// width that picture is a smudge - the whole point of it is being able to tell
+/// one pond from the next. So a phone gets four, which is also what spends the
+/// empty half-screen a stage of fifteen used to leave under itself.
+///
+/// Anything wider gets more of them rather than four enormous ones: fixed at
+/// four, a landscape iPad drew tiles a hand's width across.
+private let tileWidth: CGFloat = 96
+private let minColumns = 4
+private let maxColumns = 8
+
+/// How far onto the page the banks at the top and bottom reach.
+///
+/// Named here rather than inside the drawing because the content has to clear
+/// it: the first row of pads starts below this, or it sits half-buried in the
+/// grass.
+private let bankDepth: CGFloat = 26
 
 struct PackLevelsView: View {
     @ObservedObject var vm: AppViewModel
@@ -65,23 +83,70 @@ struct PackLevelsView: View {
     }
 
     private func stagePage(pack: Pack, stage: PackStage, currentLevelId: String) -> some View {
-        // Tall accessibility fonts can still outgrow a stage; the page scrolls
-        // rather than clipping its last row.
-        ScrollView {
-            VStack(spacing: 0) {
-                StageMeta(stage: stage, solved: vm.stageSolved(stage), stars: vm.stageStars(stage))
+        // Above the water, with the tabs. It describes the stage the way they
+        // do, and on the bank it was unreadable - a green chip on green grass.
+        VStack(spacing: 0) {
+            StageMeta(stage: stage, solved: vm.stageSolved(stage), stars: vm.stageStars(stage))
+                .padding(.horizontal, 16)
+
+            GeometryReader { outer in
+                // Tall accessibility fonts can still outgrow a stage; the page
+                // scrolls rather than clipping its last row.
+                ScrollView {
+                    // The stage is laid out *on* a pond, and the pond is as tall
+                    // as whatever it has to hold - at least a screenful, so a
+                    // stage that does not fill one is water rather than a hole,
+                    // and taller than that when it has to be. Pinned to the
+                    // viewport instead, the bank stayed at the bottom of the
+                    // screen and the last row of pads scrolled underneath it.
+                    stageWater(
+                        pack: pack,
+                        stage: stage,
+                        currentLevelId: currentLevelId,
+                        width: outer.size.width
+                    )
+                    .frame(minHeight: outer.size.height, alignment: .top)
+                    .background {
+                        Canvas { ctx, size in
+                            drawStagePond(
+                                &ctx,
+                                size: size,
+                                palette: palette,
+                                seed: stage.firstLevelNumber,
+                                bank: bankDepth
+                            )
+                        }
+                        .accessibilityHidden(true)
+                    }
+                }
+            }
+        }
+    }
+
+    /// One stage's ponds, its golden pond and the pack stepper, on the water.
+    private func stageWater(
+        pack: Pack,
+        stage: PackStage,
+        currentLevelId: String,
+        width: CGFloat
+    ) -> some View {
+        // Four on a phone, more on anything wider - and never so many that a
+        // pad shrinks back into the smudge the grid was redrawn to avoid.
+        let columns = min(max(Int((width - 32) / tileWidth), minColumns), maxColumns)
+        return VStack(spacing: 0) {
+                Spacer().frame(height: bankDepth + 14)
 
                 let rows = stride(from: 0, to: stage.levels.count, by: columns).map {
                     Array(stage.levels[$0..<min($0 + columns, stage.levels.count)])
                 }
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, rowLevels in
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         ForEach(rowLevels, id: \.id) { level in
                             let premiumLocked = vm.isPremiumLevel(level.id) && !vm.isPremium
                             let number = vm.globalLevelNumber(level.id)
-                            LevelTile(
+                            LevelPad(
                                 number: number,
-                                paysPrize: Catalog.rewardLevels.contains(number),
+                                padId: vm.padId,
                                 stars: vm.stars[level.id] ?? 0,
                                 unlocked: vm.isUnlocked(level.id),
                                 premiumLocked: premiumLocked,
@@ -99,7 +164,7 @@ struct PackLevelsView: View {
                             Color.clear.frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
                         }
                     }
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 14)
                 }
 
                 // The golden pond this stage closes - one per stage, so it reads
@@ -135,10 +200,10 @@ struct PackLevelsView: View {
                     seeded = false
                 }
                 .padding(.top, 10)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+
+                Spacer().frame(height: bankDepth + 16)
         }
+        .padding(.horizontal, 16)
     }
 }
 
@@ -385,19 +450,19 @@ private struct PrizeLine: View {
     }
 }
 
-/// One pond as a plain rounded tile: pad-green once solved, pale while waiting,
-/// faded when locked, ringed in accent for the pond you are up to. It used to be
-/// a hand-drawn lily leaf, which was lovely and cost a square cell - five of
-/// these fit where four leaves did, and a stage that ran three screens now runs
-/// none.
-private struct LevelTile: View {
+/// One pond as a lily pad: the pad the player has equipped, in full colour once
+/// cleared, lying back in the water while it waits, barely there when locked,
+/// and ringed in accent for the pond they are up to.
+///
+/// It used to be a plain rounded tile. Drawing the real pad is what makes the
+/// level select their pond rather than a grid of buttons - and the pad they
+/// bought is one they should see somewhere other than the puzzle itself.
+private struct LevelPad: View {
     @Environment(\.palette) private var palette
     @Environment(\.strings) private var strings
     let number: Int
-    /// This pond hands over a friend, a sky or a lily pad. Marked on the tile so
-    /// a prize is something you can see coming while you climb, rather than a
-    /// surprise on the way out of a pond you happened to pick.
-    let paysPrize: Bool
+    /// The lily pad the player has equipped. Their pond, their level select.
+    let padId: String
     let stars: Int
     let unlocked: Bool
     let premiumLocked: Bool
@@ -406,74 +471,74 @@ private struct LevelTile: View {
 
     var body: some View {
         let solved = stars > 0
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        let fill: Color = solved
-            ? palette.pad
-            : (unlocked || premiumLocked) ? palette.surfaceHigh : palette.surface.opacity(0.5)
+        let open = unlocked || premiumLocked
+        let lockedLabel: String? = premiumLocked ? strings["level_locked_premium"]
+            : !unlocked ? strings["level_locked"]
+            : nil
 
         Button(action: onTap) {
-            ZStack {
-                if premiumLocked {
-                    VStack(spacing: 1) {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(palette.accent.opacity(0.9))
-                            .accessibilityLabel(strings["level_locked_premium"])
-                        Text("\(number)")
-                            .font(.game(11, .semibold))
-                            .foregroundStyle(palette.textSecondary.opacity(0.8))
+            VStack(spacing: 3) {
+                ZStack {
+                    Canvas { ctx, size in
+                        // The pad wears the accent as its ring on the pond you
+                        // are up to - the same ring a coloured pad wears in a
+                        // puzzle, so the screen has one idea of what a ring
+                        // around a pad means.
+                        drawPadStyle(
+                            &ctx,
+                            padId: padId,
+                            rect: CGRect(origin: .zero, size: size),
+                            palette: palette,
+                            ring: current ? palette.accent : nil
+                        )
                     }
-                } else if !unlocked {
-                    VStack(spacing: 1) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(palette.textSecondary.opacity(0.55))
-                            .accessibilityLabel(strings["level_locked"])
-                        Text("\(number)")
-                            .font(.game(11, .semibold))
-                            .foregroundStyle(palette.textSecondary.opacity(0.55))
-                    }
-                } else {
-                    VStack(spacing: 2) {
+                    if let lockedLabel {
+                        Image(systemName: premiumLocked ? "crown.fill" : "lock.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(premiumLocked ? palette.accent : Color.white.opacity(0.85))
+                            .accessibilityLabel(lockedLabel)
+                    } else {
+                        // On the pad, so it takes the pad's own contrast rather
+                        // than the water's. Never wraps: a pond number is at
+                        // most 450.
                         Text("\(number)")
                             .font(.game(17, .bold))
-                            .foregroundStyle(solved ? .white : palette.textPrimary)
+                            .foregroundStyle(.white)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                        HStack(spacing: 1) {
-                            ForEach(0..<3, id: \.self) { index in
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(
-                                        index < stars ? palette.star
-                                            : solved ? Color.white.opacity(0.35)
-                                            : palette.textSecondary.opacity(0.25)
-                                    )
-                            }
-                        }
                     }
                 }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .background(fill, in: shape)
-            .overlay(alignment: .topTrailing) {
-                // Only while it is still worth chasing: once the pond is solved
-                // the prize is banked and the marker is just clutter on a
-                // finished tile.
-                if paysPrize && !solved && !premiumLocked {
-                    Image(systemName: "gift.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(palette.accent)
-                        .padding(3)
-                        .accessibilityLabel(strings["level_pays_reward"])
+                .frame(maxWidth: .infinity)
+                .aspectRatio(1, contentMode: .fit)
+                // Every pad is the same green, so brightness is what says how
+                // far you have got: a cleared pond sits up in full colour, one
+                // you have not played yet lies back in the water, and a locked
+                // one is barely there. Without this the only difference between
+                // the first pond and the fortieth was three small stars, and a
+                // grid you have to read rather than scan is a grid that has
+                // stopped telling you anything.
+                //
+                // The pond you are on is where the eye should land first. Left
+                // on the unplayed dim it wore its accent ring at 62%, which made
+                // the one thing the screen is pointing at the second faintest
+                // thing on it.
+                .opacity(!open ? 0.35 : (solved || current) ? 1 : 0.62)
+
+                // Three fixed-size stars under the pad, floating on the water.
+                // Nothing in this row grows with the font scale, so it cannot
+                // wrap or collide however large the player has set their type.
+                HStack(spacing: 1) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(
+                                index < stars ? palette.star
+                                    : palette.ripple.opacity(open ? 0.35 : 0.18)
+                            )
+                    }
                 }
-            }
-            .overlay {
-                if current { shape.strokeBorder(palette.accent, lineWidth: 2) }
             }
         }
         .buttonStyle(SquishyButtonStyle())
-        .disabled(!(unlocked || premiumLocked))
+        .disabled(!open)
     }
 }

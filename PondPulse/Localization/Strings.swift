@@ -19,6 +19,37 @@ enum Language: String, CaseIterable, Identifiable {
 
     var isRTL: Bool { self == .he || self == .ar }
 
+    /// The globe stands for "whatever the phone is set to" - no country owns that.
+    static let systemFlag = "🌐"
+
+    /// The flag beside the name in the picker.
+    ///
+    /// Sixteen names in sixteen scripts is a wall of text to a player who cannot
+    /// read fifteen of them, and a flag is recognisable before the word beside
+    /// it has been read at all. A language is not a country, so these are the
+    /// flags Android's own picker uses rather than an argument about which one
+    /// each language belongs to.
+    var flag: String {
+        switch self {
+        case .en: "🇬🇧"
+        case .de: "🇩🇪"
+        case .es: "🇪🇸"
+        case .fr: "🇫🇷"
+        case .id: "🇮🇩"
+        case .it: "🇮🇹"
+        case .pl: "🇵🇱"
+        case .pt: "🇵🇹"
+        case .tr: "🇹🇷"
+        case .ru: "🇷🇺"
+        case .he: "🇮🇱"
+        case .ar: "🇸🇦"
+        case .hi: "🇮🇳"
+        case .zh: "🇨🇳"
+        case .ja: "🇯🇵"
+        case .ko: "🇰🇷"
+        }
+    }
+
     /// The language's own name, shown in the language picker on purpose.
     var nativeName: String {
         switch self {
@@ -84,6 +115,21 @@ enum L10n {
     static func string(_ key: String, in language: Language) -> String {
         tables[language]?[key] ?? extras[language]?[key]
             ?? tables[.en]?[key] ?? extras[.en]?[key] ?? key
+    }
+
+    static let arrayTables: [Language: [String: [String]]] = [
+        .en: enArrays, .de: deArrays, .es: esArrays, .fr: frArrays,
+        .id: idArrays, .it: itArrays, .pl: plArrays, .pt: ptArrays,
+        .tr: trArrays, .ru: ruArrays, .he: heArrays, .ar: arArrays,
+        .hi: hiArrays, .zh: zhArrays, .ja: jaArrays, .ko: koArrays,
+    ]
+
+    /// Android's `<string-array>`. Empty is never a valid answer - a caller
+    /// picks a line out of one of these - so a language missing the key falls
+    /// through to English rather than handing back nothing to draw.
+    static func array(_ key: String, in language: Language) -> [String] {
+        if let items = arrayTables[language]?[key], !items.isEmpty { return items }
+        return arrayTables[.en]?[key] ?? []
     }
 
     static let pluralTables: [Language: [String: [String: String]]] = [
@@ -162,6 +208,11 @@ struct Strings {
     /// `strings["hint_left", hints]` - positional formatting (%1$d / %1$@).
     subscript(_ key: String, _ args: CVarArg...) -> String {
         String(format: L10n.string(key, in: language), arguments: args)
+    }
+
+    /// `strings.array("win_titles")` - Android's <string-array>, in order.
+    func array(_ key: String) -> [String] {
+        L10n.array(key, in: language)
     }
 
     /// `strings.plural("daily_win_streak", streak)` - Android's <plurals>.

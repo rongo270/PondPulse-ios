@@ -151,11 +151,12 @@ enum Achievements {
         /// rung of the campaign from being worth more than the shop: 450 ponds
         /// is forty-five times ten ponds and pays seven times as much.
         ///
-        /// The nine ladders together are worth 14,890, and everything progress
+        /// The nine ladders together are worth 7,300, and everything progress
         /// can ever pay - every pond three-starred, every golden pond, the
-        /// streak and Splash Rush - comes to 44,790 against a shop of 244,700.
-        /// Eighteen per cent, and that is the point: the rest of the shop is
-        /// bought with `Quests`, a few hundred coins a day, by turning up.
+        /// streak and Splash Rush - is a fifth or so of a shop that runs to
+        /// hundreds of thousands of coins. That is the point: the rest of the
+        /// shop is bought with `Quests`, a couple of hundred coins a day, by
+        /// turning up.
         /// The top of each ladder is deliberately reachable - 1350 stars is
         /// every pond three-starred, 84 days is `CoinBank.streakWeekCap`, 30 is
         /// every golden pond and every decoration - so no ladder ends on a rung
@@ -163,32 +164,32 @@ enum Achievements {
         var rungs: [Rung] {
             switch self {
             case .ponds:
-                return zip([ 10,  25,  50, 100, 150, 200, 250, 300, 350, 400, 450],
-                           [100, 120, 150, 180, 220, 260, 320, 380, 450, 550, 700]).map(Rung.init)
+                return zip([10, 25, 50, 100, 150, 200, 250, 300, 350, 400, 450],
+                           [50, 60, 70,  90, 110, 130, 160, 190, 220, 270, 350]).map(Rung.init)
             case .stars:
                 return zip([30, 60, 100, 150, 200, 275, 350, 450, 600, 800, 1000, 1350],
-                           [80, 100, 120, 140, 170, 200, 240, 290, 350, 420, 500, 620]).map(Rung.init)
+                           [40, 50,  60,  70,  80, 100, 120, 140, 170, 210,  250,  310]).map(Rung.init)
             case .golden:
-                return zip([  1,   3,   6,  10,  14,  18,  22,  26,  30],
-                           [100, 120, 150, 180, 220, 270, 330, 400, 500]).map(Rung.init)
+                return zip([ 1,  3,  6, 10,  14,  18,  22,  26,  30],
+                           [50, 60, 70, 90, 110, 130, 160, 200, 250]).map(Rung.init)
             case .daily:
-                return zip([ 1,   5,  15,  30,  60, 100, 150],
-                           [80, 100, 130, 170, 220, 290, 380]).map(Rung.init)
+                return zip([ 1,  5, 15, 30,  60, 100, 150],
+                           [40, 50, 60, 80, 110, 140, 190]).map(Rung.init)
             case .streak:
-                return zip([ 3,   7,  14,  30,  60,  84],
-                           [80, 110, 150, 200, 270, 360]).map(Rung.init)
+                return zip([ 3,  7, 14,  30,  60,  84],
+                           [40, 50, 70, 100, 130, 180]).map(Rung.init)
             case .rush:
                 return zip([25, 75, 150, 250, 350, 500],
-                           [60, 80, 110, 150, 200, 270]).map(Rung.init)
+                           [30, 40,  50,  70, 100, 130]).map(Rung.init)
             case .games:
-                return zip([20, 45,  80, 130, 190, 260],
-                           [60, 80, 110, 150, 200, 270]).map(Rung.init)
+                return zip([20, 45, 80, 130, 190, 260],
+                           [30, 40, 50,  70, 100, 130]).map(Rung.init)
             case .friends:
-                return zip([ 3,  6, 10,  15,  22,  30,  45],
-                           [50, 70, 90, 120, 160, 210, 280]).map(Rung.init)
+                return zip([ 3,  6, 10, 15, 22,  30,  45],
+                           [20, 30, 40, 60, 80, 100, 140]).map(Rung.init)
             case .decor:
-                return zip([ 3,  6, 10,  15,  22,  30],
-                           [50, 70, 90, 120, 160, 210]).map(Rung.init)
+                return zip([ 3,  6, 10, 15, 22,  30],
+                           [20, 30, 40, 60, 80, 100]).map(Rung.init)
             }
         }
     }

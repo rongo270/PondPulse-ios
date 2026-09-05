@@ -6,7 +6,11 @@ Android positional %n$s becomes iOS %n$@; \' \" \n unescaped.
 <plurals> come across too, as a second table per language keyed
 key -> CLDR quantity -> text. Swift has no plural selector of its own, so
 `Strings.plural` in Strings.swift implements the rules; the categories here are
-whatever the Android XML actually declares."""
+whatever the Android XML actually declares.
+
+<string-array> come across as a third table, key -> [String]. The win card
+draws its heading and its line from two of these, so the same pond does not
+close with the same sentence four hundred and fifty times."""
 import re
 import xml.etree.ElementTree as ET
 
@@ -45,6 +49,16 @@ def load(dirname):
     return out
 
 
+def load_arrays(dirname):
+    tree = ET.parse(f"{RES}/{dirname}/strings.xml")
+    return {
+        node.get("name"): [
+            android_unescape("".join(item.itertext())) for item in node.iter("item")
+        ]
+        for node in tree.getroot().iter("string-array")
+    }
+
+
 def load_plurals(dirname):
     tree = ET.parse(f"{RES}/{dirname}/strings.xml")
     out = {}
@@ -58,6 +72,7 @@ def load_plurals(dirname):
 
 tables = {lang: load(d) for d, lang in LOCALES}
 plural_tables = {lang: load_plurals(d) for d, lang in LOCALES}
+array_tables = {lang: load_arrays(d) for d, lang in LOCALES}
 en_keys = set(tables["en"])
 lines = [
     "// GENERATED from the Android res/values*/strings.xml by tools/convert_strings.py — do not edit by hand.",
@@ -88,8 +103,21 @@ for _, lang in LOCALES:
     lines.append("    ]")
     lines.append("}")
     lines.append("")
+for _, lang in LOCALES:
+    table = array_tables[lang]
+    lines.append("extension L10n {")
+    lines.append(f"    static let {lang}Arrays: [String: [String]] = [")
+    for key in sorted(table):
+        items = ", ".join(f'"{swift_escape(v)}"' for v in table[key])
+        lines.append(f'        "{key}": [{items}],')
+    lines.append("    ]")
+    lines.append("}")
+    lines.append("")
 open(OUT, "w").write("\n".join(lines))
 for _, lang in LOCALES:
     missing = en_keys - set(tables[lang])
     tag = f" (missing {len(missing)}: {sorted(missing)[:4]}…)" if missing else ""
-    print(f"{lang}: {len(tables[lang])} strings, {len(plural_tables[lang])} plurals{tag}")
+    print(
+        f"{lang}: {len(tables[lang])} strings, {len(plural_tables[lang])} plurals, "
+        f"{len(array_tables[lang])} arrays{tag}"
+    )

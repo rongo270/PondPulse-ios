@@ -93,7 +93,7 @@ nonisolated private func drawKoiShoal(_ ctx: inout GraphicsContext, _ rect: CGRe
         let cy = rect.minY + rect.height * f.1
         let len = rect.width * 0.30 * f.2
         let wide = len * 0.42
-        var c = rotated(ctx, degrees: sin(phase * 0.8 + CGFloat(i)) * 14, pivot: CGPoint(x: cx, y: cy))
+        let c = rotated(ctx, degrees: sin(phase * 0.8 + CGFloat(i)) * 14, pivot: CGPoint(x: cx, y: cy))
         // Tail first, so the body overlaps it.
         c.fill(
             polygon([
@@ -222,7 +222,7 @@ nonisolated private func drawCanoe(_ ctx: inout GraphicsContext, _ rect: CGRect,
         )
     }
     // The paddle, resting across the gunwales at an angle.
-    var c = rotated(ctx, degrees: -24, pivot: CGPoint(x: rect.midX, y: cy))
+    let c = rotated(ctx, degrees: -24, pivot: CGPoint(x: rect.midX, y: cy))
     c.stroke(
         line(CGPoint(x: rect.midX - w * 0.30, y: cy - h * 0.10), CGPoint(x: rect.midX + w * 0.26, y: cy - h * 0.10)),
         with: .color(trim), style: stroke(rect.width * 0.020)
@@ -369,7 +369,7 @@ nonisolated private func drawFirePit(_ ctx: inout GraphicsContext, _ rect: CGRec
     // Logs, criss-crossed, before the stones so the ring sits in front.
     let log = Color(hex: 0x7A5231).blended(palette.rockDark, 0.25)
     for a in [-24.0, 22.0] as [CGFloat] {
-        var c = rotated(ctx, degrees: a, pivot: CGPoint(x: cx, y: cy))
+        let c = rotated(ctx, degrees: a, pivot: CGPoint(x: cx, y: cy))
         c.fill(
             Path(roundedRect: CGRect(x: cx - rx * 0.62, y: cy - ry * 0.16, width: rx * 1.24, height: ry * 0.32),
                  cornerRadius: ry * 0.16),
@@ -490,7 +490,7 @@ nonisolated private func drawTreeSwing(_ ctx: inout GraphicsContext, _ rect: CGR
             with: .color(palette.pad.opacity(0.9))
         )
     }
-    var c = rotated(ctx, degrees: sin(phase * 1.2) * 9, pivot: CGPoint(x: rect.midX, y: rect.minY + h * 0.12))
+    let c = rotated(ctx, degrees: sin(phase * 1.2) * 9, pivot: CGPoint(x: rect.midX, y: rect.minY + h * 0.12))
     let seatY = rect.minY + h * 0.74
     for dx in [-0.17, 0.17] as [CGFloat] {
         c.stroke(
@@ -1034,7 +1034,7 @@ nonisolated private func drawAutumnShore(_ ctx: inout GraphicsContext, _ size: C
         if y < 0 || y > 1 { continue }
         let r = w * (0.014 + 0.010 * CGFloat((i * 29) % 100) / 100)
         let turn = CGFloat((i * 47) % 180) + sin(time * 0.25 + CGFloat(i)) * 5
-        var c = rotated(ctx, degrees: turn, pivot: CGPoint(x: x * w, y: y * h))
+        let c = rotated(ctx, degrees: turn, pivot: CGPoint(x: x * w, y: y * h))
         var leaf = Path()
         leaf.move(to: CGPoint(x: x * w - r, y: y * h))
         leaf.addQuadCurve(to: CGPoint(x: x * w + r, y: y * h), control: CGPoint(x: x * w, y: y * h - r * 0.9))

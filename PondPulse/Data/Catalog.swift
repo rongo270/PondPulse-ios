@@ -13,9 +13,6 @@ import Foundation
 enum Unlock {
     case free
 
-    /// Granted forever once the given global level number is solved.
-    case levelReward(Int)
-
     /// Granted forever once the given number of golden ponds have been cleared.
     case bonusReward(Int)
 
@@ -71,11 +68,6 @@ enum Unlock {
         return nil
     }
 
-    var rewardLevel: Int? {
-        if case .levelReward(let level) = self { return level }
-        return nil
-    }
-
     var rewardBonusPonds: Int? {
         if case .bonusReward(let count) = self { return count }
         return nil
@@ -108,29 +100,27 @@ enum Unlock {
     }
 
     /// Where an item sits on the ladder of *how you get it*, so every shelf reads
-    /// the same way: free, then earned by playing the campaign, then earned in a
-    /// golden pond, then earned on a daily streak, then bought, then premium.
+    /// the same way: free, then earned in a golden pond, then earned on a daily
+    /// streak, then handed over by a theme, then bought, then premium.
     ///
     /// The catalog lists used to be raw authoring order - two shelves written
-    /// months apart and appended - so the Tadpole you earn at level 15 sat below
-    /// every premium skin, and a shelf gave no sense of what was coming next.
+    /// months apart and appended - so the Tadpole sat below every premium skin,
+    /// and a shelf gave no sense of what was coming next.
     var rank: Int {
         switch self {
         case .free: return 0
-        case .levelReward: return 1
-        case .bonusReward: return 2
-        case .streakReward: return 3
-        case .themeFriend: return 4
-        case .coins: return 5
-        case .premium: return 6
-        case .money: return 7
+        case .bonusReward: return 1
+        case .streakReward: return 2
+        case .themeFriend: return 3
+        case .coins: return 4
+        case .premium: return 5
+        case .money: return 6
         }
     }
 
     /// Within a rank, the cheaper or sooner one comes first.
     var step: Int {
         switch self {
-        case .levelReward(let level): return level
         case .bonusReward(let count): return count
         case .streakReward(let days): return days
         case .coins(let price, _): return price
@@ -207,10 +197,16 @@ enum Catalog {
     static let premiumId = "premium"
     static let premiumPrice = "$2.99"
 
-    /// Consumable hint pack: 50 hints per purchase. Premium never needs it.
+    /// Consumable hint pack: 25 hints per purchase. Premium never needs it.
+    ///
+    /// The id still says 50, and stays that way. It is live in App Store Connect
+    /// and shared with Android's Play Billing id, and an id that moves when the
+    /// *contents* change is an id that loses somebody their purchase - the same
+    /// rule the coin packs keep. How many a pack grants is what a re-tune gets
+    /// to change; what the pack is called is not.
     static let hintsId = "hints_50"
-    static let hintsPrice = "$0.99"
-    static let hintsPerPack = 50
+    static let hintsPrice = "$1.99"
+    static let hintsPerPack = 25
 
     /// What one special friend costs, in US cents - $0.99 each.
     ///
@@ -231,18 +227,27 @@ enum Catalog {
     static let themeGrandCents = 299
 
     /// The coin packs, in catalog order - the one place money buys coins rather
-    /// than the other way round. Product ids match `CoinBank.coinPacks` one for
-    /// one, so a pack can never grant an amount the economy has not been priced
-    /// against.
-    static let coinPackIds: [String] = CoinBank.coinPacks.map { "coins_\($0)" }
+    /// than the other way round. Paired index for index with
+    /// `CoinBank.coinPacks`, so a pack can never grant an amount the economy has
+    /// not been priced against.
+    ///
+    /// Written out rather than interpolated from the amounts. They used to read
+    /// `"coins_\(amount)"`, which was tidy right up until the ×10 rescale moved
+    /// the amounts and silently renamed all three products - the ids are live in
+    /// App Store Connect with real purchases behind them, and an id that drifts
+    /// when a *price* changes is an id that loses somebody their coins. The
+    /// amount a pack grants is what a rescale gets to change; what the pack is
+    /// called is not.
+    static let coinPackIds = ["coins_100", "coins_250", "coins_500"]
 
     /// Offline fallback prices for the coin packs, in `coinPackIds` order. The
     /// App Store's own display prices win once StoreKit has loaded.
-    static let coinPackPrices = ["$0.99", "$1.99", "$3.49"]
+    static let coinPackPrices = ["$0.99", "$1.99", "$3.99"]
 
     /// How many coins the product id grants, or nil if it is not a coin pack.
     static func coinsInPack(_ productId: String) -> Int? {
-        CoinBank.coinPacks.first { "coins_\($0)" == productId }
+        guard let index = coinPackIds.firstIndex(of: productId) else { return nil }
+        return CoinBank.coinPacks[index]
     }
 
     // MARK: - Shelves
@@ -258,7 +263,7 @@ enum Catalog {
     private static let authoredThemes: [ThemeItem] = [
         ThemeItem(id: "dusk", nameKey: "theme_dusk", palette: .duskPond, unlock: .free),
         ThemeItem(id: "sunny", nameKey: "theme_sunny", palette: .sunnyMorning, unlock: .free),
-        ThemeItem(id: "jungle", nameKey: "theme_jungle", palette: .jungleMist, unlock: .levelReward(75)),
+        ThemeItem(id: "jungle", nameKey: "theme_jungle", palette: .jungleMist, unlock: .coins(price: CoinBank.priceTheme)),
         ThemeItem(id: "goldenpond", nameKey: "theme_goldenpond", palette: .goldenPond, unlock: .bonusReward(10)),
         ThemeItem(id: "sakura", nameKey: "theme_sakura", palette: .sakuraPond, unlock: .coins(price: CoinBank.priceTheme)),
         ThemeItem(id: "frozen", nameKey: "theme_frozen", palette: .frozenPond, unlock: .coins(price: CoinBank.priceTheme)),
@@ -274,10 +279,10 @@ enum Catalog {
 
     private static let authoredSkins: [SkinItem] = [
         SkinItem(id: "duck", nameKey: "skin_duck", unlock: .free),
-        SkinItem(id: "frog", nameKey: "skin_frog", unlock: .levelReward(50)),
-        SkinItem(id: "swan", nameKey: "skin_swan", unlock: .levelReward(100)),
-        SkinItem(id: "robo", nameKey: "skin_robo", unlock: .levelReward(200)),
-        SkinItem(id: "golden", nameKey: "skin_golden", unlock: .levelReward(300)),
+        SkinItem(id: "frog", nameKey: "skin_frog", unlock: .coins(price: CoinBank.priceLadderSkin[1])),
+        SkinItem(id: "swan", nameKey: "skin_swan", unlock: .coins(price: CoinBank.priceLadderSkin[4])),
+        SkinItem(id: "robo", nameKey: "skin_robo", unlock: .coins(price: CoinBank.priceLadderSkin[8])),
+        SkinItem(id: "golden", nameKey: "skin_golden", unlock: .coins(price: CoinBank.priceLadderSkin[11])),
         SkinItem(id: "gosling", nameKey: "skin_gosling", unlock: .bonusReward(20)),
         SkinItem(id: "koi", nameKey: "skin_koi", unlock: .coins(price: CoinBank.priceSkin, bonusCount: 1)),
         SkinItem(id: "penguin", nameKey: "skin_penguin", unlock: .coins(price: CoinBank.priceSkin, bonusCount: 5)),
@@ -289,15 +294,18 @@ enum Catalog {
         SkinItem(id: "dragon", nameKey: "skin_dragon", unlock: .premium),
         SkinItem(id: "narwhal", nameKey: "skin_narwhal", unlock: .premium),
         SkinItem(id: "beaver", nameKey: "skin_beaver", unlock: .premium),
-        SkinItem(id: "tadpole", nameKey: "skin_tadpole", unlock: .levelReward(15)),
-        SkinItem(id: "snail", nameKey: "skin_snail", unlock: .levelReward(40)),
-        SkinItem(id: "crab", nameKey: "skin_crab", unlock: .levelReward(65)),
-        SkinItem(id: "heron", nameKey: "skin_heron", unlock: .levelReward(90)),
-        SkinItem(id: "goose", nameKey: "skin_goose", unlock: .levelReward(115)),
-        SkinItem(id: "capybara", nameKey: "skin_capybara", unlock: .levelReward(150)),
-        SkinItem(id: "seal", nameKey: "skin_seal", unlock: .levelReward(175)),
-        SkinItem(id: "pelican", nameKey: "skin_pelican", unlock: .levelReward(225)),
-        SkinItem(id: "kingfisher", nameKey: "skin_kingfisher", unlock: .levelReward(260)),
+        // The second shelf. These twelve used to arrive at a level number
+        // each; they are the coin ladder now, cheapest where the level was
+        // lowest, so the run still reads in the order it was authored in.
+        SkinItem(id: "tadpole", nameKey: "skin_tadpole", unlock: .free),
+        SkinItem(id: "snail", nameKey: "skin_snail", unlock: .coins(price: CoinBank.priceLadderSkin[0])),
+        SkinItem(id: "crab", nameKey: "skin_crab", unlock: .coins(price: CoinBank.priceLadderSkin[2])),
+        SkinItem(id: "heron", nameKey: "skin_heron", unlock: .coins(price: CoinBank.priceLadderSkin[3])),
+        SkinItem(id: "goose", nameKey: "skin_goose", unlock: .coins(price: CoinBank.priceLadderSkin[5])),
+        SkinItem(id: "capybara", nameKey: "skin_capybara", unlock: .coins(price: CoinBank.priceLadderSkin[6])),
+        SkinItem(id: "seal", nameKey: "skin_seal", unlock: .coins(price: CoinBank.priceLadderSkin[7])),
+        SkinItem(id: "pelican", nameKey: "skin_pelican", unlock: .coins(price: CoinBank.priceLadderSkin[9])),
+        SkinItem(id: "kingfisher", nameKey: "skin_kingfisher", unlock: .coins(price: CoinBank.priceLadderSkin[10])),
         SkinItem(id: "dragonfly", nameKey: "skin_dragonfly", unlock: .streakReward(7)),
         SkinItem(id: "crane", nameKey: "skin_crane", unlock: .streakReward(30)),
         SkinItem(id: "lantern", nameKey: "skin_lantern", unlock: .streakReward(100)),
@@ -362,9 +370,9 @@ enum Catalog {
 
     private static let authoredPads: [PadItem] = [
         PadItem(id: "lily", nameKey: "pad_lily", unlock: .free),
-        PadItem(id: "lotus", nameKey: "pad_lotus", unlock: .levelReward(30)),
-        PadItem(id: "starlight", nameKey: "pad_starlight", unlock: .levelReward(60)),
-        PadItem(id: "rainbow", nameKey: "pad_rainbow", unlock: .levelReward(125)),
+        PadItem(id: "lotus", nameKey: "pad_lotus", unlock: .coins(price: CoinBank.priceLadderPad[1])),
+        PadItem(id: "starlight", nameKey: "pad_starlight", unlock: .coins(price: CoinBank.priceLadderPad[3])),
+        PadItem(id: "rainbow", nameKey: "pad_rainbow", unlock: .coins(price: CoinBank.priceLadderPad[5])),
         PadItem(id: "goldenlily", nameKey: "pad_goldenlily", unlock: .bonusReward(3)),
         PadItem(id: "ice", nameKey: "pad_ice", unlock: .coins(price: CoinBank.pricePad, bonusCount: 4)),
         PadItem(id: "shell", nameKey: "pad_shell", unlock: .coins(price: CoinBank.pricePad, bonusCount: 7)),
@@ -375,10 +383,10 @@ enum Catalog {
         PadItem(id: "moon", nameKey: "pad_moon", unlock: .coins(price: CoinBank.pricePadRare, bonusCount: 28)),
         PadItem(id: "crown", nameKey: "pad_crown", unlock: .premium),
         PadItem(id: "aurora", nameKey: "pad_aurora", unlock: .premium),
-        PadItem(id: "leaf", nameKey: "pad_leaf", unlock: .levelReward(20)),
-        PadItem(id: "mushroom", nameKey: "pad_mushroom", unlock: .levelReward(45)),
-        PadItem(id: "stone", nameKey: "pad_stone", unlock: .levelReward(85)),
-        PadItem(id: "cloud", nameKey: "pad_cloud", unlock: .levelReward(140)),
+        PadItem(id: "leaf", nameKey: "pad_leaf", unlock: .coins(price: CoinBank.priceLadderPad[0])),
+        PadItem(id: "mushroom", nameKey: "pad_mushroom", unlock: .coins(price: CoinBank.priceLadderPad[2])),
+        PadItem(id: "stone", nameKey: "pad_stone", unlock: .coins(price: CoinBank.priceLadderPad[4])),
+        PadItem(id: "cloud", nameKey: "pad_cloud", unlock: .coins(price: CoinBank.priceLadderPad[6])),
         PadItem(id: "nest", nameKey: "pad_nest", unlock: .bonusReward(8)),
         PadItem(id: "coralring", nameKey: "pad_coralring", unlock: .coins(price: CoinBank.pricePadRare)),
         PadItem(id: "bubble", nameKey: "pad_bubble", unlock: .coins(price: CoinBank.pricePad, bonusCount: 18)),
@@ -495,31 +503,6 @@ enum Catalog {
         // A decoration has no Unlock of its own: coins, or the golden pond rung.
         case .decor(let item): return .coins(price: item.price, bonusCount: item.bonusCount)
         }
-    }
-
-    /// What solving global level `level` pays out, or nil if it pays nothing.
-    static func rewardAtLevel(_ level: Int) -> Reward? {
-        if let item = skins.first(where: { $0.unlock.rewardLevel == level }) { return .skin(item) }
-        if let item = themes.first(where: { $0.unlock.rewardLevel == level }) { return .theme(item) }
-        if let item = pads.first(where: { $0.unlock.rewardLevel == level }) { return .pad(item) }
-        return nil
-    }
-
-    /// Every level number that pays a prize - the level list's badge test.
-    static let rewardLevels: Set<Int> = Set(
-        (skins.map(\.unlock) + themes.map(\.unlock) + pads.map(\.unlock))
-            .compactMap(\.rewardLevel)
-    )
-
-    /// The next prize waiting after `level`, with the level that pays it.
-    ///
-    /// The win card uses it to say what is coming. Rewards used to arrive with
-    /// no warning at all, which made them feel like weather rather than
-    /// something you were climbing towards.
-    static func nextRewardAfter(_ level: Int) -> (Int, Reward)? {
-        guard let at = rewardLevels.filter({ $0 > level }).min(),
-              let reward = rewardAtLevel(at) else { return nil }
-        return (at, reward)
     }
 
     static func themeById(_ id: String?) -> ThemeItem {
